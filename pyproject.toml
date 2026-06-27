@@ -1,0 +1,34 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "cryptoswap"
+version = "0.1.0.dev0"
+description = "CLI multi-currency wallet with non-custodial swaps via THORChain"
+requires-python = ">=3.12"
+dependencies = ["httpx>=0.27"]
+
+# Bitcoin signing lives behind an extra: its wheels lag new CPython releases,
+# and the THORChain client + verify gate must stay installable without it.
+[project.optional-dependencies]
+btc = ["bdkpython>=0.32"]
+
+[dependency-groups]
+dev = ["pytest>=8", "ruff>=0.15"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/cryptoswap"]
+
+[tool.ruff]
+src = ["src", "tests"]
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "ANN"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["ANN"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

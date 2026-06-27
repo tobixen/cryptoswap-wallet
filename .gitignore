@@ -1,0 +1,16 @@
+# venv / build artifacts
+.venv/
+__pycache__/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.ruff_cache/
+
+# SECRETS — never commit keys, seeds or the encrypted keystore
+*.key
+*.wif
+*.secret
+mnemonic*
+keystore*
+.cryptoswap/
