@@ -7,12 +7,12 @@ name = "cryptoswap"
 version = "0.1.0.dev0"
 description = "CLI multi-currency wallet with non-custodial swaps via THORChain"
 requires-python = ">=3.12"
-dependencies = ["httpx>=0.27"]
+dependencies = ["httpx>=0.27", "cryptography>=43"]
 
-# Bitcoin signing lives behind an extra: its wheels lag new CPython releases,
-# and the THORChain client + verify gate must stay installable without it.
-[project.optional-dependencies]
-btc = ["bdkpython>=0.32"]
+# Bitcoin signing lives behind an extra (library TBD: compiled BDK has no
+# working wheel on Python 3.14, so the pure-Python `embit` is the likely pick).
+# [project.optional-dependencies]
+# btc = ["embit>=0.8"]
 
 [dependency-groups]
 dev = ["pytest>=8", "ruff>=0.15"]
