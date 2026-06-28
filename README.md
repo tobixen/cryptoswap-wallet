@@ -6,35 +6,53 @@ A python/CLI multi-currency wallet that may do non-custodial cross-chain swaps v
 
 ## Status
 
-Phase 1 complete (BTC→ETH/TRX swaps, dry-run by default):
+Working (dry-run by default; `--confirm` to broadcast):
 
 - [x] THORChain client — `cryptoswap.thorchain`
-- [x] Pre-broadcast verify gate — `cryptoswap.verify`
+- [x] Pre-broadcast verify gate (BTC + ETH) — `cryptoswap.verify`
 - [x] Encrypted keystore (HD seed **and** raw keys) — `cryptoswap.keystore`
-- [x] `ChainAdapter` interface + BTC adapter (bitcoinlib) + minimal ETH address — `cryptoswap.chains`
-- [x] Swap orchestrator + gap-limit address scanning — `cryptoswap.swap`, `cryptoswap.chains.scan`
-- [x] CLI: `init`, `add-hd`, `add-raw`, `list`, `address`, `balance`, `quote`, `swap`, `status`
+- [x] Chain adapters: BTC (bitcoinlib), ETH (eth-account), TRON (addr + balance) — `cryptoswap.chains`
+- [x] Swap orchestrator + gap-limit BTC scanning — `cryptoswap.swap`, `cryptoswap.chains.scan`
+- [x] Registry-based multi-chain `balance`; `--amount max` sweep (BTC and ETH)
+- [x] CLI: `init`, `add-hd`, `add-raw`, `list`, `show-seed`, `address`, `balance`, `quote`, `swap`, `status`
 
-Notes / limits: BTC source only so far (ETH/TRON as sources are future adapters);
-real wiring scans BIP84 (Trust Wallet's scheme); compiled BDK has no Python 3.14
-wheel, so BTC uses `bitcoinlib`.
+**Swap routes** (source → destination)
 
-Phase 2 (later): semi-automatic "convert everything above dust since last run".
+| from ↓ \ to → | BTC | ETH | TRX | USDT-TRON | USDT-ETH |
+|---|:--:|:--:|:--:|:--:|:--:|
+| **BTC** | — | ✅ | ✅ | ✅ | ✅ |
+| **ETH** | ✅ | — | ✅ | ✅ | ✅ |
+
+Sources are **BTC and ETH** (native). TRX, USDT-TRON and USDT-ETH are
+**destinations only** — spending *from* TRON, or from a token (the TRC-20 /
+ERC-20 `approve` + router path), is future work. Destination addresses
+auto-derive from the seed; pass `--dest` to override. BTC scanning is BIP84
+(Trust Wallet's scheme); compiled BDK has no Python 3.14 wheel, so BTC uses
+`bitcoinlib`.
+
+See `docs/TODO.md` for remaining work. Phase 2 (later): semi-automatic "convert
+everything above dust since last run".
 
 ## Usage
 
 ```sh
-uv run cryptoswap init                              # create encrypted keystore
-uv run cryptoswap add-hd --label main               # paste seed when prompted
-uv run cryptoswap address                           # show derived BTC + ETH addresses
-uv run cryptoswap balance                           # scan + show BTC balance
-uv run cryptoswap quote --amount 0.001781           # BTC->ETH quote (read-only)
-uv run cryptoswap swap  --amount 0.001781           # build + verify, DRY RUN
-uv run cryptoswap swap  --amount 0.001781 --confirm # actually broadcast
+uv run cryptoswap init                                   # create encrypted keystore
+uv run cryptoswap add-hd --label main                    # import seed (prompted), or:
+uv run cryptoswap add-hd --label test --generate         # generate a fresh seed
+uv run cryptoswap address                                # BTC / ETH / TRON addresses
+uv run cryptoswap balance                                # balances across all chains
+uv run cryptoswap quote --from ETH --to USDT-TRON --amount 0.02   # read-only
+uv run cryptoswap swap  --from ETH --to BTC --amount max          # DRY RUN (sweep)
+uv run cryptoswap swap  --from BTC --to USDT-TRON --amount 0.001 --confirm
 ```
 
-Keystore path: `$CRYPTOSWAP_KEYSTORE` or `~/.config/cryptoswap/keystore.json`.
-Passphrase: `$CRYPTOSWAP_PASSPHRASE` or interactive prompt.
+Defaults are `--from BTC --to ETH`. `--confirm` prints the freshly-quoted swap
+and asks before broadcasting (`--yes` skips the prompt for automation).
+
+Config via flags or env: keystore `$CRYPTOSWAP_KEYSTORE`
+(`~/.config/cryptoswap/keystore.json`), passphrase `$CRYPTOSWAP_PASSPHRASE`,
+Esplora `$CRYPTOSWAP_ESPLORA`, Ethereum RPC `$CRYPTOSWAP_ETH_RPC`, TRON API
+`$CRYPTOSWAP_TRON_API`.
 
 ## Development
 

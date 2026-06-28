@@ -78,6 +78,24 @@ def test_asset_map():
     assert ASSET["BTC"] == "BTC.BTC"
     assert ASSET["ETH"] == "ETH.ETH"
     assert ASSET["TRX"] == "TRON.TRX"
+    assert ASSET["USDT-TRON"].startswith("TRON.USDT-")
+    assert ASSET["USDT-ETH"].startswith("ETH.USDT-")
+
+
+def test_resolve_destination_for_usdt_targets():
+    pytest.importorskip("eth_account")
+    from types import SimpleNamespace
+
+    from cryptoswap.cli import _resolve_destination
+
+    mnemonic = (
+        "abandon abandon abandon abandon abandon abandon "
+        "abandon abandon abandon abandon abandon about"
+    )
+    tron = _resolve_destination(SimpleNamespace(dest=None, to_="USDT-TRON"), mnemonic)
+    eth = _resolve_destination(SimpleNamespace(dest=None, to_="USDT-ETH"), mnemonic)
+    assert tron == "TUEZSdKsoDHQMeZwihtdoBiN46zxhGWYdH"
+    assert eth == "0x9858EfFD232B4033E47d90003D41EC34EcaEda94"
 
 
 def test_add_hd_generate_flag():

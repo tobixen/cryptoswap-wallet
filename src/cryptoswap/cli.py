@@ -36,7 +36,13 @@ BTC_ACCOUNT = "m/84'/0'/0'"
 BTC_RECEIVE_PATH = "m/84'/0'/0'/0/0"
 BTC_CHANGE_PATH = "m/84'/0'/0'/1/0"
 ETH_MAX_FEE_WEI = 10**16  # 0.01 ETH sanity ceiling on inbound gas
-ASSET = {"BTC": "BTC.BTC", "ETH": "ETH.ETH", "TRX": "TRON.TRX"}
+ASSET = {
+    "BTC": "BTC.BTC",
+    "ETH": "ETH.ETH",
+    "TRX": "TRON.TRX",
+    "USDT-TRON": "TRON.USDT-TR7NHQJEKQXGTCI8Q8ZY4PL8OTSZGJLJ6T",
+    "USDT-ETH": "ETH.USDT-0XDAC17F958D2EE523A2206206994597C13D831EC7",
+}
 
 
 # --- config helpers ---------------------------------------------------------
@@ -206,25 +212,33 @@ def cmd_balance(args: argparse.Namespace) -> int:
     return 0
 
 
+def _derivable_chain(to_: str) -> str:
+    """The destination chain we can derive an address for (BTC/ETH/TRON)."""
+    return ASSET[to_].split(".", 1)[0]
+
+
 def _resolve_destination(args: argparse.Namespace, mnemonic: str | None) -> str | None:
     if args.dest:
         return args.dest
     if mnemonic is None:
         return None
-    to = ASSET[args.to_]
-    if to == "ETH.ETH":
+    # The destination address depends on the target *chain*, so a token like
+    # TRON.USDT lands at the same Tron address as native TRX, ETH.USDT at the
+    # ETH address, etc.
+    chain = _derivable_chain(args.to_)
+    if chain == "ETH":
         from cryptoswap.chains.eth import EthAdapter
 
         return EthAdapter().derive_address(mnemonic)
-    if to == "BTC.BTC":
+    if chain == "BTC":
         from cryptoswap.chains.btc import BtcAdapter
 
         return BtcAdapter().derive_address(mnemonic, BTC_RECEIVE_PATH)
-    if to == "TRON.TRX":
+    if chain == "TRON":
         from cryptoswap.chains.tron import TronAdapter
 
         return TronAdapter().derive_address(mnemonic)
-    return None  # other targets: caller must pass --dest
+    return None  # unknown target chain: caller must pass --dest
 
 
 def cmd_quote(args: argparse.Namespace) -> int:
@@ -235,7 +249,7 @@ def cmd_quote(args: argparse.Namespace) -> int:
     # Only decrypt the keystore if we actually need to derive the destination.
     mnemonic = (
         _load_mnemonic(args)
-        if args.dest is None and ASSET[args.to_] in ("ETH.ETH", "BTC.BTC", "TRON.TRX")
+        if args.dest is None and _derivable_chain(args.to_) in ("BTC", "ETH", "TRON")
         else None
     )
     dest = _resolve_destination(args, mnemonic)
