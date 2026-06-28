@@ -22,6 +22,25 @@ Notes / caveats (see the chat that prompted this):
   never happens, no funds lost) — warn the user.
 - Mind Bitcoin mempool ancestor/descendant limits.
 
+## From the core review (docs/core-review.md)
+
+Done: A1 (shared niquests `HttpClient`), M2 (fee fallback → max), L1 (fail-closed
+UTXOs), H1 (atomic keystore write), M1 (memo-pays-destination check).
+
+Still open:
+
+- **M3** — after BTC `sign`, assert every input is actually signed (don't rely on
+  broadcast rejection).
+- **L2** — reject `amount <= 0` at parse time.
+- **A2/A3** — share the EVM key derivation + `to_checksum`/keccak helpers between
+  ETH and TRON; default `wallet_balance` on an account-model base.
+- **A4/A5/A7** — let each adapter own build+plan+verify behind one `prepare()`,
+  split `ChainAdapter` into `WalletChain` vs `SourceChain`, and table-drive the
+  CLI per-chain factories/dispatch. Do this as the **lead-in to USDT-source**.
+- **C-list** — keystore envelope `length` unused; one `ThreadPoolExecutor` per
+  scan; `quote` memo row alignment; note ETH/TRON balance only inspects index 0;
+  `--tolerance-bps` flag.
+
 ## Other known gaps
 
 - **Live integration is unproven** for the spending path (real Esplora UTXO
