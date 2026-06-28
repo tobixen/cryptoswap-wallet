@@ -1,8 +1,8 @@
 """Tests for the bitcoinlib-backed BtcAdapter.
 
 The build path is the safety-critical one: a constructed (unsigned) swap tx must
-pass the same verify gate that guards broadcasting. Skipped if bitcoinlib (the
-``btc`` extra) is not installed.
+pass the same verify gate that guards broadcasting, and must sign across the
+distinct derivation paths of its inputs. Skipped if bitcoinlib is not installed.
 """
 
 import pytest
@@ -30,10 +30,9 @@ def test_derive_address_matches_bip84_vector():
 def test_built_swap_passes_verify_gate():
     a = BtcAdapter()
     addr = a.derive_address(MNEMONIC, PATH)
-    utxos = [Utxo(txid="aa" * 32, vout=0, value=200000, address=addr)]
+    utxos = [Utxo(txid="aa" * 32, vout=0, value=200000, address=addr, path=PATH)]
     built = a.build_unsigned_swap(
         mnemonic=MNEMONIC,
-        path=PATH,
         utxos=utxos,
         vault_address=VAULT,
         amount=178100,
@@ -54,18 +53,24 @@ def test_built_swap_passes_verify_gate():
     assert problems == []
 
 
-def test_built_swap_is_signable():
+def test_signs_multiple_inputs_across_paths():
     a = BtcAdapter()
-    addr = a.derive_address(MNEMONIC, PATH)
-    utxos = [Utxo(txid="aa" * 32, vout=0, value=200000, address=addr)]
+    path0, path1 = "m/84'/0'/0'/0/0", "m/84'/0'/0'/0/1"
+    addr0 = a.derive_address(MNEMONIC, path0)
+    addr1 = a.derive_address(MNEMONIC, path1)
+    utxos = [
+        Utxo(txid="aa" * 32, vout=0, value=120000, address=addr0, path=path0),
+        Utxo(txid="bb" * 32, vout=0, value=120000, address=addr1, path=path1),
+    ]
     built = a.build_unsigned_swap(
         mnemonic=MNEMONIC,
-        path=PATH,
         utxos=utxos,
         vault_address=VAULT,
         amount=178100,
         memo=MEMO,
         fee_rate=2,
     )
-    raw = a.sign(built, mnemonic=MNEMONIC, path=PATH)
+    assert len(built.keys) == 2
+    raw = a.sign(built)
     assert isinstance(raw, str) and len(raw) > 0
+    assert built.tx.verify() is True

@@ -36,6 +36,7 @@ class BuiltSwap:
     outputs: list[TxOutput]
     fee: int
     change_address: str
+    keys: list[HDKey] = dataclasses.field(default_factory=list)
 
 
 def _extract_outputs(tx: Transaction) -> list[TxOutput]:
@@ -79,22 +80,22 @@ class BtcAdapter:
         self,
         *,
         mnemonic: str,
-        path: str,
         utxos: list[Utxo],
         vault_address: str,
         amount: int,
         memo: str,
         fee_rate: float,
         change_address: str | None = None,
+        default_path: str = DEFAULT_DERIVATION,
     ) -> BuiltSwap:
-        key = self._hdkey(mnemonic, path)
-        own = key.address(script_type="p2wpkh", encoding="bech32")
-        change_address = change_address or own
+        change_address = change_address or self.derive_address(mnemonic, default_path)
         memo_bytes = memo.encode()
         sel = select_coins(utxos, amount, fee_rate, len(memo_bytes))
 
         tx = Transaction(network="bitcoin", witness_type="segwit")
+        keys: list[HDKey] = []
         for utxo in sel.utxos:
+            key = self._hdkey(mnemonic, utxo.path or default_path)
             tx.add_input(
                 prev_txid=utxo.txid,
                 output_n=utxo.vout,
@@ -102,6 +103,7 @@ class BtcAdapter:
                 keys=key,
                 witness_type="segwit",
             )
+            keys.append(key)
         tx.add_output(amount, address=vault_address)
         tx.add_output(0, lock_script=encode_op_return(memo_bytes))
         if sel.change > 0:
@@ -112,12 +114,13 @@ class BtcAdapter:
             outputs=_extract_outputs(tx),
             fee=sel.fee,
             change_address=change_address,
+            keys=keys,
         )
 
-    def sign(
-        self, built: BuiltSwap, *, mnemonic: str, path: str = DEFAULT_DERIVATION
-    ) -> str:
-        built.tx.sign(self._hdkey(mnemonic, path))
+    def sign(self, built: BuiltSwap) -> str:
+        # Each input carries its own key; a given key signs only the input(s) it
+        # matches, so don't error on the non-matching ones.
+        built.tx.sign(built.keys, fail_on_unknown_key=False)
         return built.tx.raw_hex()
 
     # --- network via Esplora; covered by manual/integration testing, not units ---
@@ -134,6 +137,16 @@ class BtcAdapter:
 
     def fetch_balance(self, address: str) -> int:
         return sum(u.value for u in self.fetch_utxos(address))
+
+    def address_has_history(self, address: str) -> bool:
+        with httpx.Client(timeout=self._timeout) as client:
+            resp = client.get(f"{self.esplora_url}/address/{address}")
+            resp.raise_for_status()
+            stats = resp.json()
+            return (
+                stats.get("chain_stats", {}).get("tx_count", 0) > 0
+                or stats.get("mempool_stats", {}).get("tx_count", 0) > 0
+            )
 
     def fetch_fee_rate(self, target_blocks: int = 6) -> float:
         with httpx.Client(timeout=self._timeout) as client:

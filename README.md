@@ -1,13 +1,9 @@
 # cryptoswap
 
-A CLI multi-currency wallet with **non-custodial** cross-chain swaps via
-[THORChain](https://thorchain.org/).
+A python/CLI multi-currency wallet that may do **non-custodial**
+cross-chain swaps via [THORChain](https://thorchain.org/).
 
-> ⚠️ **Hot-wallet, small-funds tool.** Private keys live (encrypted) on this
-> machine and sign programmatically. Do not keep meaningful funds here. A
-> THORChain swap with a wrong vault address, amount or memo means
-> **irreversible loss** — that is why every swap goes through a strict
-> pre-broadcast verify gate (`cryptoswap.verify`).
+⚠️ This project is vibed-up, what could possibly go wrong?  **Don't use this wallet for more funds than what you can afford to lose**.  Bugs in the code may easily cause **irreversible loss of funds**.  Even if all the code is perfect, consider that this is a **hot wallet**, an attacker that gains a foothold on the computer running this wallet software may potentially manage to drain the funds in the wallet.
 
 ## Status
 

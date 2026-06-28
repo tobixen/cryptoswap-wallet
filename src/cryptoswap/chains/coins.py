@@ -32,6 +32,7 @@ class Utxo:
     vout: int
     value: int
     address: str
+    path: str | None = None  # HD derivation path, set by the address scanner
 
 
 @dataclasses.dataclass(frozen=True)
