@@ -32,6 +32,12 @@ def test_swap_amount_numeric_parses():
     assert args.amount == 0.001
 
 
+def test_swap_yes_flag_parses():
+    args = build_parser().parse_args(["swap", "--amount", "max", "--confirm", "--yes"])
+    assert args.confirm is True
+    assert args.yes is True
+
+
 def test_swap_requires_amount():
     with pytest.raises(SystemExit):
         build_parser().parse_args(["swap"])

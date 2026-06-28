@@ -287,6 +287,17 @@ def cmd_swap(args: argparse.Namespace) -> int:
             )
             return 0
 
+        # The values above are freshly quoted THIS run, not the dry-run's, so
+        # confirm against exactly what will be broadcast.
+        if not args.yes:
+            if input("\nBroadcast the swap shown above? type 'yes': ").strip() != "yes":
+                print("aborted, not broadcast.")
+                return 0
+
+        if time.time() >= prepared.plan.expiry:
+            print("ABORTED: quote expired while confirming; re-run.", file=sys.stderr)
+            return 1
+
         result = execute_swap(prepared, adapter, confirm=True)
         print(f"\nBROADCAST txid: {result.txid}")
         print(f"track: cryptoswap status {result.txid}")
@@ -367,6 +378,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _add_swap_args(s)
     s.add_argument("--confirm", action="store_true", help="actually broadcast")
+    s.add_argument(
+        "--yes", action="store_true", help="skip the interactive confirm (automation)"
+    )
     s.add_argument("--max-fee", type=int, default=50_000, help="max BTC fee in sats")
     s.set_defaults(func=cmd_swap)
 
