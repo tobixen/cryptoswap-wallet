@@ -34,6 +34,13 @@ override.
 | `add-liquidity` / `withdraw-liquidity` | BTC, ETH | single-sided, **experimental** |
 | `status` | all | track a swap by its inbound txid |
 | `--amount max` | BTC, ETH (source) | sweep the whole balance minus fees |
+| `--backend auto` | quote, swap | compares **THORChain + Maya** and routes to the best price |
+
+Swap backends are pluggable (`cryptoswap_wallet.backends`): THORChain and its
+fork **Maya** share the API/memo format, so `--backend auto` (default) quotes
+both and picks the highest output. `quote` lists every backend's rate. (A
+trustless P2P backend like BasicSwap — privacy/XMR — would slot in here too, but
+it needs full nodes, so it's future work.)
 
 ## Currency support
 

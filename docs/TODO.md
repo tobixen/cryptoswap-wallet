@@ -43,6 +43,18 @@ Still open:
   scan; `quote` memo row alignment; note ETH/TRON balance only inspects index 0;
   `--tolerance-bps` flag.
 
+## Swap backends
+
+Done: Maya backend (THORChain fork, same API/memo) + `--backend auto`
+lowest-price routing across backends.
+
+- **Maya-only assets**: expose DASH, ZEC, ADA (Cardano), ARB (Arbitrum) — Maya
+  has pools THORChain lacks; just needs `ASSET` entries + dest derivation.
+- **`send` to external address**: still pending (plain transfer, no swap memo).
+- **BasicSwap backend** (trustless P2P / privacy / XMR): orchestrate its daemon
+  via API; needs full nodes (heavy) and a different custody seam. Future.
+- **`--backend auto` for liquidity**: LP currently THORChain-only.
+
 ## Other known gaps
 
 - **Live integration is unproven** for the spending path (real Esplora UTXO
