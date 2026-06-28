@@ -74,11 +74,37 @@ def cmd_add_hd(args: argparse.Namespace) -> int:
     path = _keystore_path(args)
     pw = _passphrase()
     keystore = Keystore.load(path, pw)
-    mnemonic = args.mnemonic or getpass.getpass("BIP39 mnemonic: ")
+    if args.generate:
+        from cryptoswap.chains.btc import generate_mnemonic
+
+        mnemonic = generate_mnemonic()
+    else:
+        mnemonic = args.mnemonic or getpass.getpass("BIP39 mnemonic: ")
     keystore.add_hd(args.label, mnemonic, passphrase=args.bip39_passphrase or None)
     keystore.save(path, pw)
     print(f"added HD key {args.label!r}")
+    if args.generate:
+        from cryptoswap.chains.btc import BtcAdapter
+
+        print(
+            "BTC receive address:",
+            BtcAdapter().derive_address(mnemonic, BTC_RECEIVE_PATH),
+        )
+        print(
+            "the new seed is stored ENCRYPTED in the keystore; back up the keystore "
+            "file + passphrase.\nto reveal the words (do it privately): "
+            f"cryptoswap show-seed --key {args.label}"
+        )
     return 0
+
+
+def cmd_show_seed(args: argparse.Namespace) -> int:
+    keystore = Keystore.load(_keystore_path(args), _passphrase())
+    for entry in keystore.entries:
+        if isinstance(entry, HdKey) and (args.key is None or entry.label == args.key):
+            print(entry.mnemonic.reveal())
+            return 0
+    raise SystemExit("no matching HD key in keystore")
 
 
 def cmd_add_raw(args: argparse.Namespace) -> int:
@@ -260,9 +286,11 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--force", action="store_true")
     s.set_defaults(func=cmd_init)
 
-    s = sub.add_parser("add-hd", help="add a BIP39 mnemonic")
+    s = sub.add_parser("add-hd", help="add or generate a BIP39 mnemonic")
     s.add_argument("--label", required=True)
-    s.add_argument("--mnemonic", help="mnemonic (omit to be prompted)")
+    src = s.add_mutually_exclusive_group()
+    src.add_argument("--mnemonic", help="mnemonic (omit to be prompted)")
+    src.add_argument("--generate", action="store_true", help="generate a fresh seed")
     s.add_argument("--bip39-passphrase")
     s.set_defaults(func=cmd_add_hd)
 
@@ -274,6 +302,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     s = sub.add_parser("list", help="list keystore entries")
     s.set_defaults(func=cmd_list)
+
+    s = sub.add_parser("show-seed", help="reveal an HD mnemonic (run privately)")
+    s.add_argument("--key")
+    s.set_defaults(func=cmd_show_seed)
 
     s = sub.add_parser("address", help="show derived BTC and ETH addresses")
     s.add_argument("--key")

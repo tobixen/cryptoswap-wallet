@@ -41,3 +41,21 @@ def test_asset_map():
     assert ASSET["BTC"] == "BTC.BTC"
     assert ASSET["ETH"] == "ETH.ETH"
     assert ASSET["TRX"] == "TRON.TRX"
+
+
+def test_add_hd_generate_flag():
+    args = build_parser().parse_args(["add-hd", "--label", "x", "--generate"])
+    assert args.generate is True
+
+
+def test_add_hd_generate_and_mnemonic_mutually_exclusive():
+    with pytest.raises(SystemExit):
+        build_parser().parse_args(
+            ["add-hd", "--label", "x", "--generate", "--mnemonic", "a b c"]
+        )
+
+
+def test_show_seed_command():
+    args = build_parser().parse_args(["show-seed", "--key", "x"])
+    assert args.command == "show-seed"
+    assert args.key == "x"

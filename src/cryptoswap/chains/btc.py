@@ -30,6 +30,11 @@ DEFAULT_ESPLORA = "https://blockstream.info/api"
 DEFAULT_DERIVATION = "m/84'/0'/0'/0/0"
 
 
+def generate_mnemonic(strength: int = 128) -> str:
+    """Generate a fresh BIP39 mnemonic (128 bits of entropy = 12 words)."""
+    return Mnemonic().generate(strength)
+
+
 @dataclasses.dataclass
 class BuiltSwap:
     tx: Transaction

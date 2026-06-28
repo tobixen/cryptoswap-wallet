@@ -74,3 +74,12 @@ def test_signs_multiple_inputs_across_paths():
     raw = a.sign(built)
     assert isinstance(raw, str) and len(raw) > 0
     assert built.tx.verify() is True
+
+
+def test_generate_mnemonic_is_usable():
+    from cryptoswap.chains.btc import generate_mnemonic
+
+    mnemonic = generate_mnemonic()
+    assert len(mnemonic.split()) == 12
+    addr = BtcAdapter().derive_address(mnemonic, PATH)
+    assert addr.startswith("bc1q")
