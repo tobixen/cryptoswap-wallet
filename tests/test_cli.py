@@ -63,6 +63,12 @@ def test_swap_eth_rpc_flag_parses():
     assert args.eth_rpc == "https://x.example"
 
 
+def test_balance_eth_rpc_flag_parses():
+    args = build_parser().parse_args(["balance", "--eth-rpc", "https://x.example"])
+    assert args.command == "balance"
+    assert args.eth_rpc == "https://x.example"
+
+
 def test_status_takes_txid():
     args = build_parser().parse_args(["status", "ABC123"])
     assert args.txid == "ABC123"

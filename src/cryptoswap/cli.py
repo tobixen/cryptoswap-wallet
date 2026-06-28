@@ -19,6 +19,8 @@ import sys
 import time
 from pathlib import Path
 
+import httpx
+
 from cryptoswap.keystore import HdKey, Keystore
 from cryptoswap.swap import (
     SwapAborted,
@@ -61,6 +63,17 @@ def _btc_adapter(args: argparse.Namespace):  # noqa: ANN202 (BtcAdapter, lazy im
 
     url = args.esplora or os.environ.get("CRYPTOSWAP_ESPLORA") or DEFAULT_ESPLORA
     return BtcAdapter(url)
+
+
+def _eth_adapter(args: argparse.Namespace):  # noqa: ANN202 (EthAdapter, lazy import)
+    from cryptoswap.chains.eth import DEFAULT_RPC, EthAdapter
+
+    url = (
+        getattr(args, "eth_rpc", None)
+        or os.environ.get("CRYPTOSWAP_ETH_RPC")
+        or DEFAULT_RPC
+    )
+    return EthAdapter(url)
 
 
 def _load_mnemonic(args: argparse.Namespace) -> str:
@@ -170,6 +183,14 @@ def cmd_balance(args: argparse.Namespace) -> int:
     if pending:
         pbtc = pending / THORCHAIN_UNIT
         print(f"BTC pending: {pending} sats = {pbtc:.8f} BTC (mempool)")
+
+    with _eth_adapter(args) as eth:
+        eth_address = eth.derive_address(mnemonic)
+        try:
+            wei = eth.fetch_balance(eth_address)
+            print(f"ETH: {wei / 10**18:.8f} ETH  ({eth_address})")
+        except (httpx.HTTPError, RuntimeError, KeyError, ValueError) as exc:
+            print(f"ETH: balance unavailable ({exc})", file=sys.stderr)
     return 0
 
 
@@ -435,8 +456,9 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--key")
     s.set_defaults(func=cmd_address)
 
-    s = sub.add_parser("balance", help="scan and show BTC balance")
+    s = sub.add_parser("balance", help="scan and show BTC and ETH balances")
     s.add_argument("--key")
+    s.add_argument("--eth-rpc", help="Ethereum JSON-RPC URL ($CRYPTOSWAP_ETH_RPC)")
     s.set_defaults(func=cmd_balance)
 
     s = sub.add_parser("quote", help="show a THORChain swap quote")
