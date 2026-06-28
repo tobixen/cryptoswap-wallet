@@ -73,9 +73,13 @@ class SwapSource(Protocol):
         self, *, quote: Quote, request: SwapRequest, now: int, **kwargs: object
     ) -> Prepared: ...
 
-    def sign(self, built: object) -> str: ...
+    def sign(self, built: object) -> list[str]:
+        """Sign the built swap; returns raw txs in broadcast order (1 or more)."""
+        ...
 
-    def broadcast(self, raw_hex: str) -> str: ...
+    def broadcast(self, raws: list[str]) -> str:
+        """Broadcast the signed txs in order; return the tracking txid (the last)."""
+        ...
 
 
 def prepare_swap(
@@ -129,6 +133,6 @@ def execute_swap(
         )
     if not confirm:
         return SwapResult(prepared=prepared, txid=None, broadcast=False)
-    raw = adapter.sign(prepared.built)
-    txid = adapter.broadcast(raw)
+    raws = adapter.sign(prepared.built)
+    txid = adapter.broadcast(raws)
     return SwapResult(prepared=prepared, txid=txid, broadcast=True)

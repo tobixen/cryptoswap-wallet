@@ -339,12 +339,14 @@ btc = [
     { name = "bitcoinlib" },
 ]
 eth = [
+    { name = "eth-abi" },
     { name = "eth-account" },
 ]
 
 [package.dev-dependencies]
 dev = [
     { name = "bitcoinlib" },
+    { name = "eth-abi" },
     { name = "eth-account" },
     { name = "pytest" },
     { name = "ruff" },
@@ -354,6 +356,7 @@ dev = [
 requires-dist = [
     { name = "bitcoinlib", marker = "extra == 'btc'", specifier = ">=0.7" },
     { name = "cryptography", specifier = ">=43" },
+    { name = "eth-abi", marker = "extra == 'eth'", specifier = ">=5" },
     { name = "eth-account", marker = "extra == 'eth'", specifier = ">=0.13" },
     { name = "niquests", specifier = ">=3" },
 ]
@@ -362,6 +365,7 @@ provides-extras = ["btc", "eth"]
 [package.metadata.requires-dev]
 dev = [
     { name = "bitcoinlib", specifier = ">=0.7" },
+    { name = "eth-abi", specifier = ">=5" },
     { name = "eth-account", specifier = ">=0.13" },
     { name = "pytest", specifier = ">=8" },
     { name = "ruff", specifier = ">=0.15" },

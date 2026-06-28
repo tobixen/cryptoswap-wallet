@@ -155,11 +155,11 @@ class BtcAdapter(HttpClient):
             keys=keys,
         )
 
-    def sign(self, built: BuiltSwap) -> str:
+    def sign(self, built: BuiltSwap) -> list[str]:
         # Each input carries its own key; a given key signs only the input(s) it
         # matches, so don't error on the non-matching ones.
         built.tx.sign(built.keys, fail_on_unknown_key=False)
-        return built.tx.raw_hex()
+        return [built.tx.raw_hex()]
 
     def build_and_verify(
         self,
@@ -248,7 +248,10 @@ class BtcAdapter(HttpClient):
         # Fall back to the *highest* known rate, never the cheapest/slowest (M2).
         return float(estimates.get(str(target_blocks)) or max(estimates.values()))
 
-    def broadcast(self, raw_hex: str) -> str:
-        resp = self._post(f"{self.esplora_url}/tx", data=raw_hex)
-        resp.raise_for_status()
-        return resp.text.strip()
+    def broadcast(self, raws: list[str]) -> str:
+        txid = ""
+        for raw in raws:
+            resp = self._post(f"{self.esplora_url}/tx", data=raw)
+            resp.raise_for_status()
+            txid = resp.text.strip()
+        return txid

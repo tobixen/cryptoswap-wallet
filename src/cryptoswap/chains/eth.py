@@ -15,6 +15,7 @@ import dataclasses
 from typing import Any
 
 from Crypto.Hash import keccak
+from eth_abi import encode as abi_encode
 from eth_account import Account
 from eth_account.signers.local import LocalAccount
 
@@ -30,7 +31,32 @@ DEFAULT_RPC = "https://ethereum-rpc.publicnode.com"
 CHAIN_ID = 1
 DEFAULT_GAS = 60000
 
+# ERC-20 token source: approve(router, amount) then router.depositWithExpiry(...).
+APPROVE_SELECTOR = "095ea7b3"  # approve(address,uint256)
+DEPOSIT_SELECTOR = (
+    "44bc937b"  # depositWithExpiry(address,address,uint256,string,uint256)
+)
+DECIMALS_SELECTOR = "313ce567"  # decimals()
+APPROVE_GAS = 70000
+TOKEN_DEPOSIT_GAS = 200000
+
 Account.enable_unaudited_hdwallet_features()
+
+
+def encode_approve(router: str, amount: int) -> str:
+    return (
+        "0x"
+        + APPROVE_SELECTOR
+        + abi_encode(["address", "uint256"], [router, amount]).hex()
+    )
+
+
+def encode_deposit(vault: str, token: str, amount: int, memo: str, expiry: int) -> str:
+    args = abi_encode(
+        ["address", "address", "uint256", "string", "uint256"],
+        [vault, token, amount, memo, expiry],
+    )
+    return "0x" + DEPOSIT_SELECTOR + args.hex()
 
 
 def _keccak256(data: bytes) -> bytes:
@@ -82,6 +108,65 @@ class EthBuiltSwap:
     def fee(self) -> int:
         return self.gas * self.max_fee_per_gas
 
+    @property
+    def txs(self) -> list[dict[str, Any]]:
+        return [self.tx]
+
+
+@dataclasses.dataclass
+class EthTokenBuiltSwap:
+    """An ERC-20 token swap: approve(router) then router.depositWithExpiry(...)."""
+
+    approve_tx: dict[str, Any]
+    deposit_tx: dict[str, Any]
+    private_key: Any
+    token: str
+    router: str
+    vault: str
+    native_amount: int
+    memo: str
+    expiry: int
+
+    @property
+    def txs(self) -> list[dict[str, Any]]:
+        return [self.approve_tx, self.deposit_tx]
+
+    @property
+    def fee(self) -> int:
+        return sum(t["gas"] * t["maxFeePerGas"] for t in self.txs)
+
+
+def verify_eth_token_swap(
+    *, built: EthTokenBuiltSwap, destination: str, now: int, max_fee_wei: int
+) -> list[str]:
+    """Gate for an ERC-20 token deposit (approve + router.depositWithExpiry)."""
+    problems: list[str] = []
+    approve, deposit = built.approve_tx, built.deposit_tx
+
+    if now >= built.expiry:
+        problems.append(f"quote expired (now {now} >= expiry {built.expiry})")
+    if approve["to"].lower() != built.token.lower():
+        problems.append(f"approve 'to' {approve['to']} != token {built.token}")
+    if deposit["to"].lower() != built.router.lower():
+        problems.append(f"deposit 'to' {deposit['to']} != router {built.router}")
+    if approve["value"] != 0 or deposit["value"] != 0:
+        problems.append("token txs must not send ETH value")
+    if approve["chainId"] != CHAIN_ID or deposit["chainId"] != CHAIN_ID:
+        problems.append("wrong chainId")
+    # The deposit calldata must carry our vault, token and memo.
+    data = deposit["data"].lower()
+    if built.vault[2:].lower() not in data:
+        problems.append("deposit calldata does not contain the vault")
+    if built.token[2:].lower() not in data:
+        problems.append("deposit calldata does not contain the token")
+    if built.memo.encode().hex() not in data:
+        problems.append("deposit calldata does not contain the memo")
+    if destination and destination.lower() not in built.memo.lower():
+        problems.append(f"memo {built.memo!r} does not pay destination {destination}")
+    if built.fee > max_fee_wei:
+        problems.append(f"max fee {built.fee} wei exceeds limit {max_fee_wei}")
+    return problems
+
 
 class EthAdapter(HttpClient):
     """ChainAdapter for native Ethereum."""
@@ -118,6 +203,12 @@ class EthAdapter(HttpClient):
     def fetch_balance(self, address: str) -> int:
         return int(self._rpc("eth_getBalance", [address, "latest"]), 16)
 
+    def fetch_token_decimals(self, token: str) -> int:
+        result = self._rpc(
+            "eth_call", [{"to": token, "data": "0x" + DECIMALS_SELECTOR}, "latest"]
+        )
+        return int(result, 16)
+
     def wallet_balance(self, mnemonic: str) -> BalanceReport:
         address = self.derive_address(mnemonic)
         return BalanceReport(
@@ -134,8 +225,11 @@ class EthAdapter(HttpClient):
         base = int(block["baseFeePerGas"], 16)
         return base * 2 + tip, tip
 
-    def broadcast(self, raw_hex: str) -> str:
-        return self._rpc("eth_sendRawTransaction", [raw_hex])
+    def broadcast(self, raws: list[str]) -> str:
+        txid = ""
+        for raw in raws:
+            txid = self._rpc("eth_sendRawTransaction", [raw])
+        return str(txid)
 
     def build_unsigned_swap(
         self,
@@ -176,12 +270,66 @@ class EthAdapter(HttpClient):
             max_fee_per_gas=max_fee_per_gas,
         )
 
-    def sign(self, built: EthBuiltSwap) -> str:
-        signed = Account.sign_transaction(built.tx, built.private_key)
+    def _sign_tx(self, tx: dict[str, Any], private_key: object) -> str:
+        signed = Account.sign_transaction(tx, private_key)
         raw = getattr(signed, "raw_transaction", None)
         if raw is None:
             raw = signed.rawTransaction
         return "0x" + raw.hex()
+
+    def sign(self, built: EthBuiltSwap | EthTokenBuiltSwap) -> list[str]:
+        return [self._sign_tx(tx, built.private_key) for tx in built.txs]
+
+    def build_token_swap(
+        self,
+        *,
+        mnemonic: str,
+        request: SwapRequest,
+        quote: Quote,
+        nonce: int,
+        max_fee_per_gas: int,
+        max_priority_fee_per_gas: int,
+        decimals: int,
+    ) -> EthTokenBuiltSwap:
+        account = self._key(mnemonic, DEFAULT_ETH_DERIVATION)
+        token = to_checksum_address(request.from_asset.split("-", 1)[1])
+        router = to_checksum_address(quote.router or "")
+        vault = to_checksum_address(quote.inbound_address)
+        memo = quote.memo or ""
+        # THORChain 1e8 units -> the token's native decimals.
+        native = request.amount * 10**decimals // 10**8
+        common = {
+            "type": 2,
+            "chainId": CHAIN_ID,
+            "value": 0,
+            "maxFeePerGas": max_fee_per_gas,
+            "maxPriorityFeePerGas": max_priority_fee_per_gas,
+        }
+        approve_tx = {
+            **common,
+            "nonce": nonce,
+            "to": token,
+            "gas": APPROVE_GAS,
+            "data": encode_approve(router, native),
+        }
+        deposit_tx = {
+            **common,
+            "nonce": nonce + 1,
+            "to": router,
+            "gas": TOKEN_DEPOSIT_GAS,
+            "data": encode_deposit(vault, token, native, memo, quote.expiry),
+        }
+        return EthTokenBuiltSwap(
+            approve_tx=approve_tx,
+            deposit_tx=deposit_tx,
+            private_key=account.key,
+            token=token,
+            router=router,
+            vault=vault,
+            native_amount=native,
+            memo=memo,
+            expiry=quote.expiry,
+        )
 
     def build_and_verify(
         self,
@@ -196,6 +344,26 @@ class EthAdapter(HttpClient):
         max_priority_fee_per_gas: int,
         max_fee_wei: int,
     ) -> Prepared:
+        if "-" in request.from_asset:  # ERC-20 token source
+            built_token = self.build_token_swap(
+                mnemonic=mnemonic,
+                request=request,
+                quote=quote,
+                nonce=nonce,
+                max_fee_per_gas=max_fee_per_gas,
+                max_priority_fee_per_gas=max_priority_fee_per_gas,
+                decimals=self.fetch_token_decimals(request.from_asset.split("-", 1)[1]),
+            )
+            problems = verify_eth_token_swap(
+                built=built_token,
+                destination=request.destination,
+                now=now,
+                max_fee_wei=max_fee_wei,
+            )
+            return Prepared(
+                quote=quote, built=built_token, plan=built_token, problems=problems
+            )
+
         built = self.build_unsigned_swap(
             mnemonic=mnemonic,
             vault_address=quote.inbound_address,

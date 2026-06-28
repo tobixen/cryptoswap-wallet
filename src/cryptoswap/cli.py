@@ -261,11 +261,12 @@ def cmd_quote(args: argparse.Namespace) -> int:
 
 
 def cmd_swap(args: argparse.Namespace) -> int:
-    if args.from_ == "BTC":
+    chain = ASSET[args.from_].split(".", 1)[0]
+    if chain == "BTC":
         return _swap_from_btc(args)
-    if args.from_ == "ETH":
+    if chain == "ETH":  # native ETH and ERC-20 tokens (e.g. USDT-ETH)
         return _swap_from_eth(args)
-    print(f"swap source {args.from_} is not implemented", file=sys.stderr)
+    print(f"swap source {args.from_} is not implemented yet", file=sys.stderr)
     return 2
 
 
@@ -374,7 +375,12 @@ def _swap_from_eth(args: argparse.Namespace) -> int:
         print("a --dest address is required for this destination", file=sys.stderr)
         return 2
 
+    from_asset = ASSET[args.from_]
+    is_token = "-" in from_asset
     sweep = args.amount == "max"
+    if sweep and is_token:
+        print("--amount max is not supported for token sources yet", file=sys.stderr)
+        return 2
     with _eth_adapter(args) as adapter, ThorchainClient() as thor:
         from_address = adapter.derive_address(mnemonic)
         nonce = adapter.get_nonce(from_address)
@@ -392,7 +398,7 @@ def _swap_from_eth(args: argparse.Namespace) -> int:
         else:
             amount = int(round(args.amount * THORCHAIN_UNIT))
         request = SwapRequest(
-            from_asset="ETH.ETH",
+            from_asset=from_asset,
             to_asset=ASSET[args.to_],
             amount=amount,
             destination=dest,
@@ -415,15 +421,13 @@ def _swap_from_eth(args: argparse.Namespace) -> int:
             return 1
 
         out = prepared.quote.expected_amount_out / THORCHAIN_UNIT
-        eth_in = amount / THORCHAIN_UNIT
-        gwei = max_fee_per_gas / 10**9
+        amount_in = amount / THORCHAIN_UNIT
         max_fee_eth = prepared.built.fee / 10**18
-        print(f"send:      {eth_in:.8f} ETH to {prepared.quote.inbound_address}")
+        vault = prepared.quote.inbound_address
+        print(f"send:    {amount_in:.8f} {args.from_} to {vault}")
         print(f"expect:    {out:.8f} {args.to_} -> {dest}")
         print(f"memo:      {prepared.quote.memo}")
-        print(
-            f"gas:       {args.eth_gas} @ {gwei:.2f} gwei (max {max_fee_eth:.6f} ETH)"
-        )
+        print(f"max fee:   {max_fee_eth:.6f} ETH ({len(prepared.built.txs)} tx)")
         return _confirm_and_execute(prepared, adapter, args)
 
 

@@ -86,9 +86,9 @@ class FakeAdapter:
 
     def sign(self, built):
         self.signed = True
-        return "deadbeef"
+        return ["deadbeef"]
 
-    def broadcast(self, raw_hex):
+    def broadcast(self, raws):
         self.broadcasted = True
         return "txid123"
 

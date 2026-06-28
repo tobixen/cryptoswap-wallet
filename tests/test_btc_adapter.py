@@ -71,8 +71,8 @@ def test_signs_multiple_inputs_across_paths():
         fee_rate=2,
     )
     assert len(built.keys) == 2
-    raw = a.sign(built)
-    assert isinstance(raw, str) and len(raw) > 0
+    raws = a.sign(built)
+    assert len(raws) == 1 and isinstance(raws[0], str)
     assert built.tx.verify() is True
 
 
