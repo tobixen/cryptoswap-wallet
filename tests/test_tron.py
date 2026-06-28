@@ -23,3 +23,43 @@ def test_derive_tron_address_vector():
     assert addr == "TUEZSdKsoDHQMeZwihtdoBiN46zxhGWYdH"
     assert addr.startswith("T")
     assert len(addr) == 34
+
+
+class _FakeResponse:
+    def __init__(self, payload: dict) -> None:
+        self._payload = payload
+
+    def raise_for_status(self) -> None:
+        pass
+
+    def json(self) -> dict:
+        return self._payload
+
+
+def test_fetch_balance_uses_walletgetaccount_api(monkeypatch):
+    """Balance must come from the standard /wallet/getaccount full-node API
+    (keyless, served by many public nodes) rather than TronGrid's proprietary
+    indexed /v1/accounts route."""
+    adapter = TronAdapter(api_url="https://tron-rpc.publicnode.com")
+    calls = {}
+
+    def fake_post(url, **kwargs):
+        calls["url"] = url
+        calls["json"] = kwargs.get("json")
+        return _FakeResponse({"balance": 1234567})
+
+    monkeypatch.setattr(adapter, "_post", fake_post)
+    assert adapter.fetch_balance("TUEZSdKsoDHQMeZwihtdoBiN46zxhGWYdH") == 1234567
+    assert calls["url"] == "https://tron-rpc.publicnode.com/wallet/getaccount"
+    assert calls["json"] == {
+        "address": "TUEZSdKsoDHQMeZwihtdoBiN46zxhGWYdH",
+        "visible": True,
+    }
+
+
+def test_fetch_balance_zero_for_account_without_balance_field(monkeypatch):
+    """An activated account with no TRX omits the 'balance' field; a fresh
+    account returns {}. Both mean zero."""
+    adapter = TronAdapter()
+    monkeypatch.setattr(adapter, "_post", lambda url, **kw: _FakeResponse({}))
+    assert adapter.fetch_balance("TUEZSdKsoDHQMeZwihtdoBiN46zxhGWYdH") == 0
