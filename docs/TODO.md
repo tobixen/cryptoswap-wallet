@@ -52,14 +52,15 @@ Still open:
   types when needed.
 - **ETH gas estimation**: ETH source uses a fixed `--eth-gas` (default 60000);
   could call `eth_estimateGas` against the quote's vault/memo instead.
-- **TRON as a swap source**: native TRX source adapter (tronpy) behind
-  `ChainAdapter`. ETH source is done; TRON is destination-only so far
-  (derivation + TRX balance + `--to TRX`).
-- **Token (USDT/USDC) swaps**: THORChain has `ETH.USDT`, `TRON.USDT`,
-  `ETH.USDC`, etc. As a *destination* (e.g. BTC/ETH→TRON.USDT) it is now mostly
-  just an asset-map entry — the Tron destination address already derives. As a
-  *source* it needs the ERC-20 / TRC-20 `approve` + `router.depositWithExpiry`
-  path. Also: showing token balances (not just native TRX/ETH) in `balance`.
+- **TRX + USDT-TRON as sources**: native TRON signing via tronpy (TRX = transfer
+  to vault + memo in tx data; USDT-TRON = TRC-20 transfer to vault + memo, no
+  router on TRON). Needs a TronGrid API key — tronpy can't even build a tx
+  without a node, and the keyless endpoint 429s. ETH and USDT-ETH sources done.
+- **Token balances in `balance`**: show USDT (TRC-20/ERC-20) holdings, not just
+  native BTC/ETH/TRX.
+- **USDT-ETH source niceties**: `--amount max` (needs token balance), real
+  `eth_estimateGas` instead of fixed approve/deposit gas, and the USDT
+  "reset allowance to 0 before re-approving" edge case for repeat swaps.
 - **Phase 2 — semi-automatic convert**: human-in-the-loop "convert everything
   above dust since last run" command (accumulate small inbounds, stream large
   swaps, idempotent on processed txids).

@@ -22,13 +22,14 @@ Working (dry-run by default; `--confirm` to broadcast):
 |---|:--:|:--:|:--:|:--:|:--:|
 | **BTC** | — | ✅ | ✅ | ✅ | ✅ |
 | **ETH** | ✅ | — | ✅ | ✅ | ✅ |
+| **USDT-ETH** | ✅ | ✅ | ✅ | ✅ | — |
 
-Sources are **BTC and ETH** (native). TRX, USDT-TRON and USDT-ETH are
-**destinations only** — spending *from* TRON, or from a token (the TRC-20 /
-ERC-20 `approve` + router path), is future work. Destination addresses
-auto-derive from the seed; pass `--dest` to override. BTC scanning is BIP84
-(Trust Wallet's scheme); compiled BDK has no Python 3.14 wheel, so BTC uses
-`bitcoinlib`.
+Sources: **BTC, ETH, and USDT-ETH** (ERC-20 via `approve` + router deposit).
+**TRX and USDT-TRON sources are not done yet** — they need native TRON signing
+plus a TronGrid API key (`$CRYPTOSWAP_TRON_API`); TRON is currently
+destination-only. Destination addresses auto-derive from the seed; pass
+`--dest` to override. BTC scanning is BIP84 (Trust Wallet's scheme); compiled
+BDK has no Python 3.14 wheel, so BTC uses `bitcoinlib`.
 
 See `docs/TODO.md` for remaining work. Phase 2 (later): semi-automatic "convert
 everything above dust since last run".
