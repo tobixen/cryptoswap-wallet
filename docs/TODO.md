@@ -140,6 +140,20 @@ lowest-price routing across backends.
   calldata, bind recipient/amount, check the memo).
 - **Token balances in `balance`**: show USDT (TRC-20/ERC-20) holdings, not just
   native BTC/ETH/TRX.
+- **Cache LP provider addresses (balance-report speed-up)**: reporting added
+  liquidity queries the backend's `pool/{POOL}/liquidity_provider/{ADDRESS}`
+  endpoint. ETH/TRON have a single derived address; BTC's LP is keyed by the
+  deposit tx's VIN0, which isn't predictable, so the report has to query every
+  *used* address the account scan already enumerates (× each backend). To skip
+  those per-address LP calls, cache the provider address learned when *we* build
+  an `add-liquidity` tx — read VIN0 back from the final built/signed tx (don't
+  predict it from coin-selection order: bitcoinlib may BIP-69-reorder inputs).
+  Deferred because it's only a BTC concern and a cache must **extend** coverage,
+  never shrink it: a lost/stale cache (seed restored elsewhere, LP added by
+  another tool) would silently under-report funds — the worst failure for a
+  wallet. So treat it as a hint unioned with the full scan, or as an opt-in fast
+  path with the scan as the default source of truth. (See the chat that prompted
+  this.)
 - **USDT-ETH source niceties**: `--amount max` (needs token balance), real
   `eth_estimateGas` instead of fixed approve/deposit gas, and the USDT
   "reset allowance to 0 before re-approving" edge case for repeat swaps.
