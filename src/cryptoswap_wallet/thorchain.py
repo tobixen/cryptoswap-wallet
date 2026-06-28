@@ -93,6 +93,141 @@ def _int(value: str | int) -> int:
     return int(value)
 
 
+@dataclasses.dataclass(frozen=True)
+class PoolDepth:
+    """A pool's current depths, from ``/pool/{asset}``; used to value the RUNE/
+    CACAO side of an LP position in asset terms. 1e8 base units (Maya names the
+    protocol balance ``balance_cacao`` where THORChain uses ``balance_rune``)."""
+
+    asset: str
+    balance_asset: int
+    balance_protocol: int
+
+    @property
+    def asset_per_protocol(self) -> float:
+        """Asset units per 1 unit of RUNE/CACAO (0 for an empty/absent pool)."""
+        if not self.balance_protocol:
+            return 0.0
+        return self.balance_asset / self.balance_protocol
+
+
+def parse_pool_depth(payload: dict[str, Any]) -> PoolDepth:
+    protocol = payload.get("balance_rune", payload.get("balance_cacao", "0"))
+    return PoolDepth(
+        asset=payload.get("asset", ""),
+        balance_asset=_int(payload.get("balance_asset", "0")),
+        balance_protocol=_int(protocol),
+    )
+
+
+@dataclasses.dataclass(frozen=True)
+class LiquidityPosition:
+    """A wallet's stake in a pool, from ``pool/{asset}/liquidity_provider/{addr}``.
+
+    All amounts are THORChain 1e8 base units (1 whole asset == ``100_000_000``).
+    ``asset_redeem_value`` is what is currently redeemable on this chain's side;
+    ``protocol_redeem_value`` is the RUNE (THORChain) / CACAO (Maya) side, which
+    is non-zero for symmetric or aged single-sided positions. A single-sided
+    withdraw converts that side back to the asset, so given a pool price we fold
+    it into a total; without one we flag it rather than silently drop it.
+
+    ``*_deposit_value`` is the protocol's per-side valuation of the position at
+    deposit time, **not** what the wallet sent: even a single-sided asset add
+    gets a non-zero RUNE/CACAO ``deposit_value`` (the protocol books your units
+    across both sides). So the two legs together are the contribution; we never
+    show the raw protocol leg (it isn't asset units and can't be added to them),
+    but fold it into one asset-equivalent figure at the pool price.
+    """
+
+    pool: str
+    asset_address: str
+    units: int
+    asset_redeem_value: int
+    pending_asset: int
+    protocol_redeem_value: int
+    asset_deposit_value: int = 0
+    protocol_deposit_value: int = 0
+
+    def format(
+        self,
+        source: str,
+        *,
+        protocol: str = "RUNE",
+        protocol_price_in_asset: float | None = None,
+    ) -> str:
+        """A one-line LP summary for ``balance``; ``source`` is the backend name.
+
+        With ``protocol_price_in_asset`` (asset units per 1 RUNE/CACAO) the RUNE/
+        CACAO side is valued and folded into an estimated total; the figure is
+        gross of the exit slip/fees a real withdraw would pay, hence ``~``. The
+        deposit is shown the same way (one asset-equivalent number, both legs
+        repriced at the *current* pool price) — an estimate of cost basis, not an
+        exact deposit-time figure.
+        """
+
+        def in_asset(value: int) -> float:
+            return value * (protocol_price_in_asset or 0.0) / THORCHAIN_UNIT
+
+        asset_side = self.asset_redeem_value / THORCHAIN_UNIT
+        if protocol_price_in_asset is not None and self.protocol_redeem_value:
+            side = in_asset(self.protocol_redeem_value)
+            total = asset_side + side
+            head = (
+                f"~{total:.8f} redeemable "
+                f"({asset_side:.8f} asset + {side:.8f} via {protocol})"
+            )
+        elif self.protocol_redeem_value:
+            head = (
+                f"{asset_side:.8f} redeemable "
+                f"(plus a {protocol}-side value not counted)"
+            )
+        else:
+            head = f"{asset_side:.8f} redeemable"
+        line = f"  +LP {source} {self.pool}: {head}"
+        extras = []
+        if protocol_price_in_asset is not None and (
+            self.asset_deposit_value or self.protocol_deposit_value
+        ):
+            deposited = (
+                self.asset_deposit_value / THORCHAIN_UNIT
+                + in_asset(self.protocol_deposit_value)
+            )
+            extras.append(f"deposited ~{deposited:.8f}")
+        if self.pending_asset:
+            extras.append(f"+{self.pending_asset / THORCHAIN_UNIT:.8f} pending")
+        if extras:
+            line += "; " + "; ".join(extras)
+        return line
+
+
+def parse_liquidity_provider(payload: dict[str, Any]) -> LiquidityPosition | None:
+    """Parse a ``liquidity_provider`` response, or ``None`` when nothing's worth
+    reporting.
+
+    An address with no position answers HTTP 200 with ``units: "0"`` (not a 404),
+    and a fully-withdrawn position can linger with units but nothing redeemable;
+    both collapse to ``None``. Maya names the protocol side ``cacao_*`` where
+    THORChain uses ``rune_*``.
+    """
+    if "error" in payload:
+        return None
+    redeem = payload.get("rune_redeem_value", payload.get("cacao_redeem_value", "0"))
+    deposit = payload.get("rune_deposit_value", payload.get("cacao_deposit_value", "0"))
+    pos = LiquidityPosition(
+        pool=payload.get("asset", ""),
+        asset_address=payload.get("asset_address", ""),
+        units=_int(payload.get("units", "0")),
+        asset_redeem_value=_int(payload.get("asset_redeem_value", "0")),
+        pending_asset=_int(payload.get("pending_asset", "0")),
+        protocol_redeem_value=_int(redeem),
+        asset_deposit_value=_int(payload.get("asset_deposit_value", "0")),
+        protocol_deposit_value=_int(deposit),
+    )
+    if not (pos.asset_redeem_value or pos.pending_asset or pos.protocol_redeem_value):
+        return None
+    return pos
+
+
 def normalize_txid(txid: str) -> str:
     """Normalise a user-supplied txid to the form thornode/mayanode index by.
 
@@ -194,6 +329,33 @@ class ThorchainClient(HttpClient):
         )
         resp.raise_for_status()
         return resp.json()
+
+    def liquidity_provider(
+        self, pool: str, address: str
+    ) -> LiquidityPosition | None:
+        """``address``'s LP position in ``pool``, or ``None`` if it has none.
+
+        A pool this backend doesn't run (e.g. ``TRON.TRX`` on Maya) 404s; treat
+        that as "no position" rather than an error, so a single shared address
+        set can be probed against every backend.
+        """
+        resp = self._get(
+            f"{self.base_url}/{self.path_prefix}/pool/{pool}/liquidity_provider/{address}",
+            headers=self._headers,
+        )
+        if resp.status_code == 404:
+            return None
+        resp.raise_for_status()
+        return parse_liquidity_provider(resp.json())
+
+    def pool(self, asset: str) -> PoolDepth:
+        """Current depths for ``asset``'s pool (to value an LP's RUNE/CACAO side)."""
+        resp = self._get(
+            f"{self.base_url}/{self.path_prefix}/pool/{asset}",
+            headers=self._headers,
+        )
+        resp.raise_for_status()
+        return parse_pool_depth(resp.json())
 
     def mimir(self) -> dict[str, Any]:
         """Network config toggles (e.g. ``PAUSELP``); values are ints."""

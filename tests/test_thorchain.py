@@ -10,6 +10,8 @@ from cryptoswap_wallet.thorchain import (
     ThorchainError,
     normalize_txid,
     parse_inbound_addresses,
+    parse_liquidity_provider,
+    parse_pool_depth,
     parse_quote,
 )
 
@@ -169,3 +171,173 @@ def test_tx_status_queries_without_0x_prefix(monkeypatch):
     assert (
         captured["url"] == "https://node.example/mayachain/tx/status/3a8927cc190f91d9"
     )
+
+
+# --- liquidity-provider parsing (for the `balance` LP report) ----------------
+# Trimmed real responses from /thorchain (and /mayachain) pool/.../
+# liquidity_provider/<addr>. An address with no position answers HTTP 200 with
+# units "0" (not a 404), so "no position" is detected by nothing being
+# redeemable, not by an error.
+
+THOR_LP = {  # single-sided asset add that has accrued a RUNE side over time
+    "asset": "BTC.BTC",
+    "asset_address": "bc1qprovider",
+    "units": "775667659",
+    "pending_asset": "0",
+    "pending_rune": "0",
+    "asset_deposit_value": "180000",
+    "rune_deposit_value": "0",
+    "asset_redeem_value": "190000",
+    "rune_redeem_value": "5000000",
+}
+
+MAYA_LP = {  # Maya names the protocol side cacao_*; this one is symmetric
+    "asset": "BTC.BTC",
+    "asset_address": "bc1qprovider",
+    "units": "2391734936428",
+    "pending_asset": "0",
+    "pending_cacao": "0",
+    "asset_deposit_value": "63200",
+    "cacao_deposit_value": "3727448215686",
+    "asset_redeem_value": "63040",
+    "cacao_redeem_value": "3736696648698",
+}
+
+EMPTY_LP = {  # an address that never provided: 200 OK, everything zero
+    "asset": "BTC.BTC",
+    "asset_address": "bc1qnope",
+    "units": "0",
+    "pending_asset": "0",
+    "asset_redeem_value": "0",
+    "rune_redeem_value": "0",
+}
+
+
+def test_parse_liquidity_provider_thorchain():
+    pos = parse_liquidity_provider(THOR_LP)
+    assert pos is not None
+    assert pos.pool == "BTC.BTC"
+    assert pos.asset_address == "bc1qprovider"
+    assert pos.asset_redeem_value == 190000
+    assert pos.asset_deposit_value == 180000  # what was provided (cost basis)
+    assert pos.pending_asset == 0
+    assert pos.protocol_redeem_value == 5000000  # rune side
+
+
+def test_parse_liquidity_provider_maya_uses_cacao_field():
+    pos = parse_liquidity_provider(MAYA_LP)
+    assert pos is not None
+    assert pos.asset_redeem_value == 63040
+    assert pos.protocol_redeem_value == 3736696648698  # from cacao_redeem_value
+    assert pos.protocol_deposit_value == 3727448215686  # from cacao_deposit_value
+
+
+def test_liquidity_position_format_deposit_is_asset_equiv_not_raw_cacao():
+    # The protocol-side deposit (cacao) must never surface as a raw "+ N CACAO"
+    # the user can't add to ETH; it's converted to asset and folded in. With
+    # price 2e-8: deposited = 63200 + 3727448215686*2e-8 = 137748.96 -> 0.00137749.
+    line = parse_liquidity_provider(MAYA_LP).format(
+        "maya", protocol="CACAO", protocol_price_in_asset=2e-8
+    )
+    assert "deposited ~0.00137749" in line
+    assert "CACAO" in line  # appears only as the in-asset breakdown ("via CACAO")
+    assert line.count("CACAO") == 1
+    assert "via CACAO" in line
+
+
+def test_parse_liquidity_provider_no_position_is_none():
+    assert parse_liquidity_provider(EMPTY_LP) is None
+
+
+def test_parse_liquidity_provider_error_is_none():
+    assert parse_liquidity_provider({"error": "pool does not exist"}) is None
+
+
+def test_parse_liquidity_provider_dead_units_is_none():
+    # Withdrawn position can linger with units but nothing redeemable -> skip it.
+    payload = {**EMPTY_LP, "units": "123"}
+    assert parse_liquidity_provider(payload) is None
+
+
+def test_parse_liquidity_provider_pending_only_is_reported():
+    payload = {**EMPTY_LP, "pending_asset": "12345"}
+    pos = parse_liquidity_provider(payload)
+    assert pos is not None
+    assert pos.pending_asset == 12345
+
+
+def test_liquidity_position_format_without_price_flags_uncounted_side():
+    # No pool price available -> fall back to asset side only, but say so rather
+    # than silently dropping the protocol side.
+    line = parse_liquidity_provider(THOR_LP).format("thorchain")
+    assert "thorchain BTC.BTC" in line
+    assert "0.00190000" in line  # asset_redeem_value / 1e8
+    assert "RUNE" in line and "not counted" in line
+
+
+def test_liquidity_position_format_with_price_shows_total_value():
+    # protocol_price_in_asset = asset per 1 protocol unit. The RUNE side
+    # (5_000_000) is worth 5_000_000 * 0.01 = 50_000 -> total 240_000 (0.0024).
+    # The CACAO/RUNE side is converted to asset *before* summing, so the total
+    # is a single clean asset figure (you can't add raw RUNE to BTC).
+    line = parse_liquidity_provider(THOR_LP).format(
+        "thorchain", protocol_price_in_asset=0.01
+    )
+    assert "0.00240000 redeemable" in line  # asset + RUNE side, in BTC
+    assert "0.00190000" in line  # asset-side breakdown
+    assert "0.00050000" in line  # RUNE side valued in BTC
+    assert "not counted" not in line  # it IS counted now
+    # cost basis as one asset-equiv figure (asset_deposit 180000, no rune leg)
+    assert "deposited ~0.00180000" in line
+
+
+def test_liquidity_position_format_maya_labels_cacao_and_pending():
+    payload = {**MAYA_LP, "pending_asset": "1000000"}
+    line = parse_liquidity_provider(payload).format("maya", protocol="CACAO")
+    assert "maya BTC.BTC" in line
+    assert "0.01000000 pending" in line
+    assert "CACAO" in line
+
+
+def test_liquidity_provider_client_builds_url(monkeypatch):
+    client = ThorchainClient("https://node.example", path_prefix="mayachain")
+    captured: dict[str, str] = {}
+
+    class _Resp:
+        status_code = 200
+
+        def raise_for_status(self) -> None: ...
+
+        def json(self) -> dict[str, object]:
+            return EMPTY_LP
+
+    def fake_get(url: str, **_kw: object) -> _Resp:
+        captured["url"] = url
+        return _Resp()
+
+    monkeypatch.setattr(client, "_get", fake_get)
+    assert client.liquidity_provider("BTC.BTC", "bc1qnope") is None
+    assert captured["url"] == (
+        "https://node.example/mayachain/pool/BTC.BTC/liquidity_provider/bc1qnope"
+    )
+
+
+def test_parse_pool_depth_thorchain():
+    depth = parse_pool_depth(
+        {"asset": "BTC.BTC", "balance_asset": "200", "balance_rune": "1000"}
+    )
+    assert depth.balance_asset == 200
+    assert depth.balance_protocol == 1000
+    assert depth.asset_per_protocol == 0.2  # asset per 1 RUNE/CACAO
+
+
+def test_parse_pool_depth_maya_uses_cacao_balance():
+    depth = parse_pool_depth(
+        {"asset": "BTC.BTC", "balance_asset": "50", "balance_cacao": "100"}
+    )
+    assert depth.balance_protocol == 100
+
+
+def test_pool_depth_empty_pool_has_zero_price():
+    depth = parse_pool_depth({"balance_asset": "0", "balance_rune": "0"})
+    assert depth.asset_per_protocol == 0.0

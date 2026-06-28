@@ -276,6 +276,7 @@ class EthAdapter(HttpClient):
             confirmed=self.fetch_balance(address),
             decimals=18,
             note=f"({address})",
+            addresses=(address,),
         )
 
     def fetch_fees(self) -> tuple[int, int]:

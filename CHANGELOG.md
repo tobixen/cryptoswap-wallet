@@ -18,7 +18,10 @@ automatically from git tags (PEP 440 / SemVer).
   TransferContract with the memo in tx data (tronpy), via a keyless public node.
 - Permissive `--dest` sanity check (network/format) to catch gross typos before
   a swap is quoted or broadcast.
-- Registry-based multi-chain `balance`; `quote`, `status`, `address`.
+- Registry-based multi-chain `balance` (now also reports THORChain/Maya
+  liquidity positions: total redeemable value in the asset — the RUNE/CACAO side
+  of a position is converted at the pool price and folded in, not added raw —
+  plus any pending); `quote`, `status`, `address`.
 - Experimental `add-liquidity` / `withdraw-liquidity` (BTC, ETH, TRX,
   single-sided), with `--backend {thorchain,maya}` and a pre-flight `PAUSELP`
   check that aborts an add THORChain would only refund.

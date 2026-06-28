@@ -118,6 +118,7 @@ class TronAdapter(HttpClient):
             confirmed=self.fetch_balance(address),
             decimals=TRX_DECIMALS,
             note=f"({address})",
+            addresses=(address,),
         )
 
     # --- spending FROM Tron (swap source + liquidity deposit) ---------------

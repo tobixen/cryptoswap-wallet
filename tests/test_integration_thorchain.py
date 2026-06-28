@@ -51,6 +51,30 @@ def test_mimir_exposes_lp_pause_toggle_live():
     assert isinstance(mimir["PAUSELP"], int)
 
 
+def test_liquidity_provider_live():
+    # The `balance` LP report parses pool/.../liquidity_provider/<addr>. Guard
+    # the field names against API drift by parsing a real, live position. Many
+    # listed providers are fully withdrawn (units linger, nothing redeemable ->
+    # None), so probe a handful until one with redeemable value turns up.
+    with ThorchainClient() as thor:
+        providers = thor._get(
+            f"{thor.base_url}/{thor.path_prefix}/pool/BTC.BTC/liquidity_providers"
+        ).json()
+        position = None
+        for lp in providers[:50]:
+            position = thor.liquidity_provider("BTC.BTC", lp["asset_address"])
+            if position is not None:
+                break
+    assert position is not None
+    assert position.asset_redeem_value > 0 or position.protocol_redeem_value > 0
+
+
+def test_liquidity_provider_no_position_is_none_live():
+    # A never-provided address answers 200 with units 0 -> None (not an error).
+    with ThorchainClient() as thor:
+        assert thor.liquidity_provider("BTC.BTC", BTC_DEST) is None
+
+
 def test_eth_usdt_source_quote_live():
     with ThorchainClient() as thor:
         quote = thor.quote_swap(ASSET["USDT-ETH"], "BTC.BTC", 5_000_000_000, BTC_DEST)

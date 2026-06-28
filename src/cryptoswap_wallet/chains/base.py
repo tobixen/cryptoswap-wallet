@@ -22,6 +22,9 @@ class BalanceReport:
     decimals: int
     pending: int = 0
     note: str = ""
+    # The wallet addresses this balance covers, so `balance` can probe them for
+    # liquidity positions without re-deriving/re-scanning (BTC is multi-address).
+    addresses: tuple[str, ...] = ()
 
     def format(self) -> str:
         amount = self.confirmed / 10**self.decimals

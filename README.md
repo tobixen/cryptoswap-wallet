@@ -25,7 +25,7 @@ override.
 
 | Feature | Available for | Notes |
 |---|---|---|
-| `balance` | BTC, ETH, TRX | native balances (token balances not shown yet) |
+| `balance` | BTC, ETH, TRX | native balances + any THORChain/Maya liquidity positions (token balances not shown yet) |
 | `address` | BTC, ETH, TRON | derived from the seed |
 | `quote` | any supported asset | read-only price preview |
 | `swap` (source) | BTC, ETH, TRX, USDT-ETH | the asset you spend |

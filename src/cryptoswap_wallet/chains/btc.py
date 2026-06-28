@@ -324,6 +324,7 @@ class BtcAdapter(HttpClient):
             decimals=8,
             pending=pending,
             note=f"({len(records)} used addresses)",
+            addresses=tuple(address for _, address, _ in records),
         )
 
     def fetch_fee_rate(self, target_blocks: int = 6) -> float:

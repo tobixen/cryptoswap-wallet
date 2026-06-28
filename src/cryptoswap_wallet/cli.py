@@ -220,21 +220,71 @@ def cmd_balance(args: argparse.Namespace) -> int:
         flush=True,
     )
     mnemonic = _load_mnemonic(args)
-    for adapter in _wallet_adapters(args):
-        with adapter:
-            try:
-                report = adapter.wallet_balance(mnemonic)
-            except (
-                *HTTP_ERRORS,
-                RuntimeError,
-                KeyError,
-                ValueError,
-                IndexError,
-            ) as exc:
-                print(f"{adapter.chain}: balance unavailable ({exc})", file=sys.stderr)
-                continue
-            print(report.format())
+    from cryptoswap_wallet.backends import default_backends
+
+    backends = default_backends()
+    try:
+        for adapter in _wallet_adapters(args):
+            with adapter:
+                try:
+                    report = adapter.wallet_balance(mnemonic)
+                except (
+                    *HTTP_ERRORS,
+                    RuntimeError,
+                    KeyError,
+                    ValueError,
+                    IndexError,
+                ) as exc:
+                    print(
+                        f"{adapter.chain}: balance unavailable ({exc})", file=sys.stderr
+                    )
+                    continue
+                print(report.format())
+                _report_liquidity(backends, adapter.asset, report.addresses)
+    finally:
+        for backend in backends:
+            backend.client.close()
     return 0
+
+
+def _report_liquidity(
+    backends: list,  # noqa: ANN401 (list[Backend]; lazy import avoids a cycle)
+    asset: str,
+    addresses: tuple[str, ...],
+) -> None:
+    """Print any LP positions the wallet's addresses hold in ``asset``'s pool.
+
+    Liquidity can sit on either backend, so every address is probed against all
+    of them. A position is keyed by the L1 sender; for BTC that's not knowable
+    ahead of time, so we probe every used address (most return nothing). The
+    redeemable amount is shown as its own line, never folded into the spendable
+    balance — an LP position isn't liquid and the figure is gross of exit fees.
+    """
+    for backend in backends:
+        protocol = "CACAO" if backend.name == "maya" else "RUNE"
+        price: float | None = None  # asset per RUNE/CACAO; fetched once, lazily
+        priced = False
+        for address in addresses:
+            try:
+                position = backend.client.liquidity_provider(asset, address)
+            except HTTP_ERRORS as exc:
+                print(
+                    f"{backend.name} {asset}: LP lookup failed ({exc})", file=sys.stderr
+                )
+                break  # backend unreachable: don't hammer it for every address
+            if position is None:
+                continue
+            if not priced:  # only worth a pool fetch once we've found a position
+                priced = True
+                try:
+                    price = backend.client.pool(asset).asset_per_protocol
+                except HTTP_ERRORS:
+                    price = None  # fall back to flagging the side as uncounted
+            print(
+                position.format(
+                    backend.name, protocol=protocol, protocol_price_in_asset=price
+                )
+            )
 
 
 def _derivable_chain(to_: str) -> str:
