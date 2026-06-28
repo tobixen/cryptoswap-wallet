@@ -14,7 +14,9 @@ Owner's requested order; two-sided liquidity comes *after* these.
    falls through to "not implemented"). Adding it needs TRON as a swap *source*
    — signing a TRX transfer to the inbound vault with the `+:POOL` memo — so it
    depends on the TRX-source work under *Other known gaps* (tronpy + a TRON
-   endpoint). Confirm a TRX pool actually exists on the chosen backend first.
+   endpoint). Pool confirmed: `TRON.TRX` is `Available` on THORChain with deep
+   liquidity (~230k RUNE as of 2026-06-28), so the source signing is the only
+   blocker.
 
 3. **More swap *destinations* via external `--dest` addresses.** Destination-only
    support is cheap: THORChain/Maya pay the output to any valid address on the
