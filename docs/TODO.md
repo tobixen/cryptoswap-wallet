@@ -29,8 +29,6 @@ Notes / caveats (see the chat that prompted this):
 - **BIP49/44 scanning**: real wiring scans BIP84 only (Trust Wallet's scheme).
   `scan_account` is generic enough to add `m/49'`/`m/44'` accounts + script
   types when needed.
-- **ETH `--amount max`**: sweep the ETH balance minus the gas reserve
-  (balance − gas·maxFeePerGas). Numeric amounts only for ETH source today.
 - **ETH gas estimation**: ETH source uses a fixed `--eth-gas` (default 60000);
   could call `eth_estimateGas` against the quote's vault/memo instead.
 - **TRON as a swap source**: native TRX source adapter (tronpy) behind
