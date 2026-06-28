@@ -34,6 +34,42 @@ BDK has no Python 3.14 wheel, so BTC uses `bitcoinlib`.
 See `docs/TODO.md` for remaining work. Phase 2 (later): semi-automatic "convert
 everything above dust since last run".
 
+## Roadmap (asset coverage)
+
+Reach is bounded by THORChain's pools — current chains: BTC, ETH, BSC, AVAX,
+BASE, BCH, LTC, DOGE, GAIA (ATOM), SOL, TRON, XRP, THOR (RUNE). **Monero (XMR)
+is nearing mainnet** (no live pool yet — verify before relying). Everything
+discussed is therefore in scope; nothing currently needs a separate backend.
+
+Status: ✅ done · ◑ destination only · ☐ planned. Listed in recommended order.
+
+| # | Asset | What it is | Family | Status | Notes |
+|--:|---|---|---|:--:|---|
+| 1 | **BTC** | Bitcoin | UTXO | ✅ | source + destination |
+| 2 | **ETH** | Ethereum | EVM | ✅ | source + destination |
+| 3 | **USDT-ETH** | Tether (ERC-20) | EVM token | ✅ | source (approve+router) + destination |
+| 4 | **TRX** | TRON native | TRON | ◑ | source needs tronpy + a TRON endpoint |
+| 5 | **USDT-TRON** | Tether (TRC-20) | TRON token | ◑ | source = TRC-20 transfer+memo (no router) |
+| 6 | **BSC / BNB** | BNB Smart Chain | EVM | ☐ | same address/signing as ETH; chainId/RPC/router differ |
+| 7 | **AVAX** | Avalanche C-Chain | EVM | ☐ | EVM family config entry |
+| 8 | **BASE** | Base (ETH L2) | EVM | ☐ | EVM family config entry |
+| 9 | **USDC/USDT on BSC/AVAX/BASE** | stablecoins | EVM token | ☐ | come with the EVM family |
+| 10 | **LTC** | Litecoin | UTXO | ☐ | generalize BTC adapter; needs a Litecoin Esplora |
+| 11 | **DOGE** | Dogecoin | UTXO | ☐ | UTXO family |
+| 12 | **BCH** | Bitcoin Cash | UTXO | ☐ | UTXO family |
+| 13 | **RUNE** | THORChain native | Cosmos/THOR | ☐ | dest = `thor1…`; source = `MsgDeposit`; gateway to LP |
+| 14 | **(LP)** | liquidity provision | — | ☐ | `+:POOL` / `-:POOL:bps` memos; experimental, tuition-not-yield |
+| 15 | **ATOM** | Cosmos Hub (GAIA) | Cosmos | ☐ | new adapter (cosmpy) |
+| 16 | **XRP** | XRP Ledger | XRP | ☐ | new adapter (xrpl-py) |
+| 17 | **SOL** | Solana | Solana | ☐ | new adapter (ed25519 / solders); THORChain-supported |
+| 18 | **XMR** | Monero | Monero | ☐ | nearing THORChain mainnet; heaviest (Monero stack, `tx_extra` memo) |
+| 19 | **TCY** | THORChain reward token | THOR token | ☐ | niche; low priority |
+
+Order rationale: EVM family (6–9) is the most coverage for least risk (reuses ETH
+signing, no new deps); UTXO (10–12) next; TRON sources (4–5) are code-ready but
+endpoint-blocked; RUNE/LP (13–14) open the native side; ATOM/XRP/SOL/XMR (15–18)
+are new signing stacks, XMR heaviest and pool-pending.
+
 ## Usage
 
 ```sh
