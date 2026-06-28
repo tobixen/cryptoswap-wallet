@@ -1,9 +1,8 @@
 """Swap orchestration: quote -> build -> verify -> (confirm) -> sign -> broadcast.
 
 The orchestrator depends only on small protocols, so it can be tested with fakes
-and is decoupled from bitcoinlib. It is currently BTC-source specific: amounts
-are THORChain 1e8 base units, which for BTC.BTC equal satoshis directly. An
-account-based source chain (ETH) will need decimal handling at this seam.
+and is decoupled from the signing libraries. Amounts are THORChain 1e8 base
+units (sats for BTC; converted to wei for ETH).
 """
 
 from __future__ import annotations
@@ -13,7 +12,14 @@ from typing import Protocol
 
 from cryptoswap.chains.coins import Utxo
 from cryptoswap.thorchain import ChainStatus, Quote
-from cryptoswap.verify import SwapPlan, TxOutput, verify_btc_swap
+from cryptoswap.verify import (
+    WEI_PER_THORCHAIN_UNIT,
+    EthSwapPlan,
+    SwapPlan,
+    TxOutput,
+    verify_btc_swap,
+    verify_eth_swap,
+)
 
 DEFAULT_TOLERANCE_BPS = 300
 
@@ -23,11 +29,31 @@ class SwapAborted(RuntimeError):
 
 
 class BuiltSwapLike(Protocol):
-    """The slice of a built swap the orchestrator needs (see chains.btc.BuiltSwap)."""
+    """The slice of a built BTC swap the orchestrator needs (chains.btc.BuiltSwap)."""
 
     outputs: list[TxOutput]
     fee: int
     change_address: str
+
+
+class EthBuiltLike(Protocol):
+    """What the orchestrator reads off a built ETH swap (chains.eth.EthBuiltSwap)."""
+
+    to: str
+    value: int
+    data: str
+    chain_id: int
+    gas: int
+    max_fee_per_gas: int
+    fee: int
+
+
+class SignBroadcast(Protocol):
+    """The signing/broadcast surface execute_swap needs from any adapter."""
+
+    def sign(self, built: object) -> str: ...
+
+    def broadcast(self, raw_hex: str) -> str: ...
 
 
 class ThorchainLike(Protocol):
@@ -65,6 +91,27 @@ class BtcSwapAdapter(Protocol):
     def broadcast(self, raw_hex: str) -> str: ...
 
 
+class EthSwapAdapter(Protocol):
+    chain: str
+
+    def build_unsigned_swap(
+        self,
+        *,
+        mnemonic: str,
+        vault_address: str,
+        amount: int,
+        memo: str,
+        nonce: int,
+        gas: int,
+        max_fee_per_gas: int,
+        max_priority_fee_per_gas: int,
+    ) -> EthBuiltLike: ...
+
+    def sign(self, built: EthBuiltLike) -> str: ...
+
+    def broadcast(self, raw_hex: str) -> str: ...
+
+
 @dataclasses.dataclass(frozen=True)
 class SwapRequest:
     from_asset: str
@@ -76,8 +123,8 @@ class SwapRequest:
 @dataclasses.dataclass(frozen=True)
 class Prepared:
     quote: Quote
-    built: BuiltSwapLike
-    plan: SwapPlan
+    built: BuiltSwapLike | EthBuiltLike
+    plan: SwapPlan | EthSwapPlan
     problems: list[str]
 
     @property
@@ -154,8 +201,72 @@ def prepare_btc_swap(
     return Prepared(quote=quote, built=built, plan=plan, problems=problems)
 
 
+def prepare_eth_swap(
+    *,
+    thorchain: ThorchainLike,
+    adapter: EthSwapAdapter,
+    mnemonic: str,
+    request: SwapRequest,
+    nonce: int,
+    gas: int,
+    max_fee_per_gas: int,
+    max_priority_fee_per_gas: int,
+    now: int,
+    max_fee_wei: int,
+    tolerance_bps: int = DEFAULT_TOLERANCE_BPS,
+) -> Prepared:
+    """Quote, build the unsigned ETH deposit tx, and run the ETH verify gate."""
+    status = thorchain.inbound_addresses().get(adapter.chain)
+    if status is None or not status.tradable:
+        raise SwapAborted(f"{adapter.chain} is not currently tradable on THORChain")
+
+    quote = thorchain.quote_swap(
+        request.from_asset,
+        request.to_asset,
+        request.amount,
+        request.destination,
+        tolerance_bps=tolerance_bps,
+    )
+    if request.amount < quote.recommended_min_amount_in:
+        raise SwapAborted(
+            f"amount {request.amount} is below the recommended minimum "
+            f"{quote.recommended_min_amount_in}; swap would be uneconomical"
+        )
+    if not quote.memo:
+        raise SwapAborted("THORChain quote returned no memo (missing destination?)")
+
+    built = adapter.build_unsigned_swap(
+        mnemonic=mnemonic,
+        vault_address=quote.inbound_address,
+        amount=request.amount,
+        memo=quote.memo,
+        nonce=nonce,
+        gas=gas,
+        max_fee_per_gas=max_fee_per_gas,
+        max_priority_fee_per_gas=max_priority_fee_per_gas,
+    )
+    plan = EthSwapPlan(
+        inbound_address=quote.inbound_address,
+        amount_wei=request.amount * WEI_PER_THORCHAIN_UNIT,
+        memo=quote.memo,
+        expiry=quote.expiry,
+    )
+    problems = verify_eth_swap(
+        to=built.to,
+        value=built.value,
+        data=built.data,
+        chain_id=built.chain_id,
+        gas=built.gas,
+        max_fee_per_gas=built.max_fee_per_gas,
+        plan=plan,
+        now=now,
+        max_fee_wei=max_fee_wei,
+    )
+    return Prepared(quote=quote, built=built, plan=plan, problems=problems)
+
+
 def execute_swap(
-    prepared: Prepared, adapter: BtcSwapAdapter, *, confirm: bool
+    prepared: Prepared, adapter: SignBroadcast, *, confirm: bool
 ) -> SwapResult:
     """Sign and broadcast a prepared swap. Refuses unless the verify gate passed.
 

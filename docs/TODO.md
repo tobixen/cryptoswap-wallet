@@ -29,9 +29,16 @@ Notes / caveats (see the chat that prompted this):
 - **BIP49/44 scanning**: real wiring scans BIP84 only (Trust Wallet's scheme).
   `scan_account` is generic enough to add `m/49'`/`m/44'` accounts + script
   types when needed.
-- **ETH/TRON as swap sources**: only address derivation exists for ETH; full
-  adapters (web3.py / tronpy: balances, nonce/gas, router deposit, broadcast)
-  are future work behind the existing `ChainAdapter` interface.
+- **ETH `--amount max`**: sweep the ETH balance minus the gas reserve
+  (balance − gas·maxFeePerGas). Numeric amounts only for ETH source today.
+- **ETH gas estimation**: ETH source uses a fixed `--eth-gas` (default 60000);
+  could call `eth_estimateGas` against the quote's vault/memo instead.
+- **TRON as a swap source**: native TRX source adapter (tronpy) behind
+  `ChainAdapter`. ETH source is done (native ETH only).
+- **Token (USDT/USDC) swaps**: THORChain has `ETH.USDT`, `TRON.USDT`,
+  `ETH.USDC`, etc. As a *destination* (e.g. BTC→TRON.USDT) it's mostly an
+  asset-map + destination-address addition. As a *source* it needs the ERC-20 /
+  TRC-20 `approve` + `router.depositWithExpiry` path.
 - **Phase 2 — semi-automatic convert**: human-in-the-loop "convert everything
   above dust since last run" command (accumulate small inbounds, stream large
   swaps, idempotent on processed txids).

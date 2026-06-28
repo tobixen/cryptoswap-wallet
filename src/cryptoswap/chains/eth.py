@@ -1,16 +1,32 @@
-"""Minimal Ethereum support: deriving the destination address from the seed.
+"""Ethereum chain adapter (native ETH) for THORChain swaps.
 
-This is the seed of a future full EthAdapter; for now it only derives the
-checksummed (EIP-55) address so BTC->ETH swaps can target the same wallet.
+Derivation and signing use eth-account; chain state and broadcast use JSON-RPC.
+A native ETH deposit goes directly to the inbound vault with the THORChain memo
+hex-encoded in the transaction's calldata (the router is only needed for tokens).
+
+build_unsigned_swap is pure given nonce/gas/fees (so it is unit-testable); the
+caller fetches those over RPC. Amounts are THORChain 1e8 base units, converted
+to wei via WEI_PER_THORCHAIN_UNIT.
 """
 
 from __future__ import annotations
 
-from bitcoinlib.keys import HDKey
-from bitcoinlib.mnemonic import Mnemonic
+import dataclasses
+from typing import Any
+
+import httpx
 from Crypto.Hash import keccak
+from eth_account import Account
+from eth_account.signers.local import LocalAccount
+
+from cryptoswap.verify import WEI_PER_THORCHAIN_UNIT
 
 DEFAULT_ETH_DERIVATION = "m/44'/60'/0'/0/0"
+DEFAULT_RPC = "https://ethereum-rpc.publicnode.com"
+CHAIN_ID = 1
+DEFAULT_GAS = 60000
+
+Account.enable_unaudited_hdwallet_features()
 
 
 def _keccak256(data: bytes) -> bytes:
@@ -19,8 +35,10 @@ def _keccak256(data: bytes) -> bytes:
     return h.digest()
 
 
-def to_checksum_address(addr: bytes) -> str:
-    """EIP-55 checksum encoding of a 20-byte address."""
+def to_checksum_address(addr: bytes | str) -> str:
+    """EIP-55 checksum encoding of a 20-byte address (bytes or hex string)."""
+    if isinstance(addr, str):
+        addr = bytes.fromhex(addr.removeprefix("0x"))
     lower = addr.hex()
     digest = _keccak256(lower.encode()).hex()
     encoded = "".join(
@@ -30,12 +48,127 @@ def to_checksum_address(addr: bytes) -> str:
     return "0x" + encoded
 
 
+@dataclasses.dataclass
+class EthBuiltSwap:
+    tx: dict[str, Any]
+    private_key: Any
+    to: str
+    value: int
+    data: str
+    chain_id: int
+    gas: int
+    max_fee_per_gas: int
+
+    @property
+    def fee(self) -> int:
+        return self.gas * self.max_fee_per_gas
+
+
 class EthAdapter:
+    """ChainAdapter for native Ethereum."""
+
     chain = "ETH"
     asset = "ETH.ETH"
 
+    def __init__(self, rpc_url: str = DEFAULT_RPC, timeout: float = 20.0) -> None:
+        self.rpc_url = rpc_url
+        self._timeout = timeout
+        self._client: httpx.Client | None = None
+
+    @property
+    def _http(self) -> httpx.Client:
+        if self._client is None:
+            self._client = httpx.Client(timeout=self._timeout)
+        return self._client
+
+    def close(self) -> None:
+        if self._client is not None:
+            self._client.close()
+            self._client = None
+
+    def __enter__(self) -> EthAdapter:
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self.close()
+
+    def _key(self, mnemonic: str, path: str) -> LocalAccount:
+        return Account.from_mnemonic(mnemonic, account_path=path)
+
     def derive_address(self, mnemonic: str, path: str = DEFAULT_ETH_DERIVATION) -> str:
-        seed = Mnemonic().to_seed(mnemonic)
-        key = HDKey.from_seed(seed).key_for_path(path)
-        pubkey = key.public_uncompressed_byte  # 0x04 || X(32) || Y(32)
-        return to_checksum_address(_keccak256(pubkey[1:])[-20:])
+        return self._key(mnemonic, path).address
+
+    # --- JSON-RPC ---
+
+    def _rpc(self, method: str, params: list[object]) -> object:
+        resp = self._http.post(
+            self.rpc_url,
+            json={"jsonrpc": "2.0", "id": 1, "method": method, "params": params},
+        )
+        resp.raise_for_status()
+        payload = resp.json()
+        if payload.get("error"):
+            raise RuntimeError(f"RPC {method}: {payload['error']}")
+        return payload["result"]
+
+    def get_nonce(self, address: str) -> int:
+        return int(self._rpc("eth_getTransactionCount", [address, "pending"]), 16)
+
+    def fetch_balance(self, address: str) -> int:
+        return int(self._rpc("eth_getBalance", [address, "latest"]), 16)
+
+    def fetch_fees(self) -> tuple[int, int]:
+        """Return ``(max_fee_per_gas, max_priority_fee_per_gas)`` in wei."""
+        tip = int(self._rpc("eth_maxPriorityFeePerGas", []), 16)
+        block = self._rpc("eth_getBlockByNumber", ["latest", False])
+        base = int(block["baseFeePerGas"], 16)
+        return base * 2 + tip, tip
+
+    def broadcast(self, raw_hex: str) -> str:
+        return self._rpc("eth_sendRawTransaction", [raw_hex])
+
+    def build_unsigned_swap(
+        self,
+        *,
+        mnemonic: str,
+        vault_address: str,
+        amount: int,
+        memo: str,
+        nonce: int,
+        gas: int,
+        max_fee_per_gas: int,
+        max_priority_fee_per_gas: int,
+        path: str = DEFAULT_ETH_DERIVATION,
+    ) -> EthBuiltSwap:
+        account = self._key(mnemonic, path)
+        to = to_checksum_address(vault_address)
+        value = amount * WEI_PER_THORCHAIN_UNIT
+        data = "0x" + memo.encode().hex()
+        tx = {
+            "type": 2,
+            "chainId": CHAIN_ID,
+            "nonce": nonce,
+            "to": to,
+            "value": value,
+            "gas": gas,
+            "maxFeePerGas": max_fee_per_gas,
+            "maxPriorityFeePerGas": max_priority_fee_per_gas,
+            "data": data,
+        }
+        return EthBuiltSwap(
+            tx=tx,
+            private_key=account.key,
+            to=to,
+            value=value,
+            data=data,
+            chain_id=CHAIN_ID,
+            gas=gas,
+            max_fee_per_gas=max_fee_per_gas,
+        )
+
+    def sign(self, built: EthBuiltSwap) -> str:
+        signed = Account.sign_transaction(built.tx, built.private_key)
+        raw = getattr(signed, "raw_transaction", None)
+        if raw is None:
+            raw = signed.rawTransaction
+        return "0x" + raw.hex()

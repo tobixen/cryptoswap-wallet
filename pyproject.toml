@@ -17,9 +17,10 @@ cryptoswap = "cryptoswap.cli:main"
 # broadcast) that installs on 3.14; compiled BDK does not.
 [project.optional-dependencies]
 btc = ["bitcoinlib>=0.7"]
+eth = ["eth-account>=0.13"]
 
 [dependency-groups]
-dev = ["pytest>=8", "ruff>=0.15", "bitcoinlib>=0.7"]
+dev = ["pytest>=8", "ruff>=0.15", "bitcoinlib>=0.7", "eth-account>=0.13"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/cryptoswap"]

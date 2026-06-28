@@ -13,6 +13,8 @@ from __future__ import annotations
 import dataclasses
 
 OP_RETURN_MAX_BYTES = 80
+# wei (1e18) per THORChain base unit (1e8)
+WEI_PER_THORCHAIN_UNIT = 10**10
 
 
 @dataclasses.dataclass(frozen=True)
@@ -104,5 +106,53 @@ def verify_btc_swap(
         problems.append(f"negative fee {fee}")
     elif fee > max_fee:
         problems.append(f"fee {fee} exceeds max_fee {max_fee}")
+
+    return problems
+
+
+@dataclasses.dataclass(frozen=True)
+class EthSwapPlan:
+    """What we intend an ETH deposit transaction to do (from a THORChain quote)."""
+
+    inbound_address: str
+    amount_wei: int
+    memo: str
+    expiry: int
+    chain_id: int = 1
+
+
+def verify_eth_swap(
+    *,
+    to: str,
+    value: int,
+    data: str,
+    chain_id: int,
+    gas: int,
+    max_fee_per_gas: int,
+    plan: EthSwapPlan,
+    now: int,
+    max_fee_wei: int,
+) -> list[str]:
+    """Return reasons the ETH deposit tx does not match ``plan``; empty means safe.
+
+    Native ETH deposits send ``value`` wei to the vault with the memo as hex
+    calldata. A wrong vault, amount, or memo means irreversible loss.
+    """
+    problems: list[str] = []
+
+    if now >= plan.expiry:
+        problems.append(f"quote expired (now {now} >= expiry {plan.expiry})")
+    if (to or "").lower() != plan.inbound_address.lower():
+        problems.append(f"tx 'to' {to} != vault {plan.inbound_address}")
+    if value != plan.amount_wei:
+        problems.append(f"tx value {value} wei != intended {plan.amount_wei}")
+    expected_data = "0x" + plan.memo.encode().hex()
+    if (data or "").lower() != expected_data.lower():
+        problems.append(f"calldata {data!r} != memo-encoded {expected_data!r}")
+    if chain_id != plan.chain_id:
+        problems.append(f"chainId {chain_id} != {plan.chain_id}")
+    total_fee = gas * max_fee_per_gas
+    if total_fee > max_fee_wei:
+        problems.append(f"max fee {total_fee} wei exceeds limit {max_fee_wei}")
 
     return problems

@@ -48,6 +48,21 @@ def test_swap_rejects_unknown_asset():
         build_parser().parse_args(["swap", "--amount", "1", "--to", "DOGE"])
 
 
+def test_swap_from_eth_parses():
+    args = build_parser().parse_args(
+        ["swap", "--from", "ETH", "--to", "BTC", "--amount", "0.01"]
+    )
+    assert args.from_ == "ETH"
+    assert args.to_ == "BTC"
+
+
+def test_swap_eth_rpc_flag_parses():
+    args = build_parser().parse_args(
+        ["swap", "--from", "ETH", "--amount", "0.01", "--eth-rpc", "https://x.example"]
+    )
+    assert args.eth_rpc == "https://x.example"
+
+
 def test_status_takes_txid():
     args = build_parser().parse_args(["status", "ABC123"])
     assert args.txid == "ABC123"

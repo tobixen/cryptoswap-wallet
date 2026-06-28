@@ -5,7 +5,13 @@ swap: wrong vault, wrong amount, wrong/garbled memo, change leaking to a
 non-owned address, an expired quote, or an absurd fee.
 """
 
-from cryptoswap.verify import SwapPlan, TxOutput, verify_btc_swap
+from cryptoswap.verify import (
+    EthSwapPlan,
+    SwapPlan,
+    TxOutput,
+    verify_btc_swap,
+    verify_eth_swap,
+)
 
 VAULT = "bc1qct4mxayrdy96d4py20l4u02mu06r667f42p9fp"
 CHANGE = "bc1qchange00000000000000000000000000000000"
@@ -81,3 +87,59 @@ def test_memo_too_long_for_op_return():
         outs, fee=600, plan=plan, owned_addresses=OWNED, now=1000, max_fee=10000
     )
     assert any("80" in p for p in problems)
+
+
+# --- ETH swap verify gate ---
+
+ETH_VAULT = "0x85034887f6656d610c38ef1710208495791fb146"
+ETH_MEMO = "=:BTC.BTC:bc1qexampledest:123"
+ETH_PLAN = EthSwapPlan(
+    inbound_address=ETH_VAULT, amount_wei=10**16, memo=ETH_MEMO, expiry=2000
+)
+
+
+def eth_verify(**override):
+    args = dict(
+        to=ETH_VAULT,
+        value=10**16,
+        data="0x" + ETH_MEMO.encode().hex(),
+        chain_id=1,
+        gas=60000,
+        max_fee_per_gas=20_000_000_000,
+        plan=ETH_PLAN,
+        now=1000,
+        max_fee_wei=10**16,
+    )
+    args.update(override)
+    return verify_eth_swap(**args)
+
+
+def test_eth_valid_has_no_problems():
+    assert eth_verify() == []
+
+
+def test_eth_wrong_vault():
+    assert any("vault" in p.lower() for p in eth_verify(to="0xdeadbeef"))
+
+
+def test_eth_wrong_value():
+    assert any("value" in p.lower() for p in eth_verify(value=999))
+
+
+def test_eth_wrong_memo():
+    assert any(
+        "memo" in p.lower() or "calldata" in p.lower()
+        for p in eth_verify(data="0xdeadbeef")
+    )
+
+
+def test_eth_wrong_chain_id():
+    assert any("chain" in p.lower() for p in eth_verify(chain_id=137))
+
+
+def test_eth_expired():
+    assert any("expir" in p.lower() for p in eth_verify(now=99999))
+
+
+def test_eth_fee_too_high():
+    assert any("fee" in p.lower() for p in eth_verify(max_fee_per_gas=10**15))

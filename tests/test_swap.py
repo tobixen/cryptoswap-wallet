@@ -5,7 +5,13 @@ from types import SimpleNamespace
 import pytest
 
 from cryptoswap.chains.coins import Utxo
-from cryptoswap.swap import SwapAborted, SwapRequest, execute_swap, prepare_btc_swap
+from cryptoswap.swap import (
+    SwapAborted,
+    SwapRequest,
+    execute_swap,
+    prepare_btc_swap,
+    prepare_eth_swap,
+)
 from cryptoswap.thorchain import ChainStatus, Quote, SwapFees
 from cryptoswap.verify import TxOutput
 
@@ -182,3 +188,136 @@ def test_execute_blocks_unsafe_transaction():
     with pytest.raises(SwapAborted):
         execute_swap(prepared, adapter, confirm=True)
     assert adapter.broadcasted is False
+
+
+# --- ETH source orchestration ---
+
+ETH_VAULT = "0x85034887f6656d610c38ef1710208495791fb146"
+ETH_BTC_MEMO = "=:BTC.BTC:bc1qdest:123"
+
+
+def make_eth_quote(min_in=98391, memo=ETH_BTC_MEMO, expiry=10**12):
+    return Quote(
+        inbound_address=ETH_VAULT,
+        expected_amount_out=170000,
+        memo=memo,
+        fees=SwapFees("BTC.BTC", 1058, 0, 500, 1558, 20, 50),
+        recommended_min_amount_in=min_in,
+        expiry=expiry,
+        dust_threshold=10000,
+        recommended_gas_rate=15,
+        gas_rate_units="gwei",
+        router="0xrouter",
+        max_streaming_quantity=1,
+        streaming_swap_blocks=1,
+        total_swap_seconds=30,
+        raw={},
+    )
+
+
+def eth_status(tradable=True):
+    return ChainStatus(
+        chain="ETH",
+        gas_rate=15,
+        gas_rate_units="gwei",
+        outbound_fee=15821,
+        dust_threshold=0,
+        halted=not tradable,
+        global_trading_paused=False,
+        chain_trading_paused=False,
+    )
+
+
+class FakeEthThor:
+    def __init__(self, quote=None, tradable=True):
+        self._quote = quote or make_eth_quote()
+        self._tradable = tradable
+
+    def inbound_addresses(self):
+        return {"ETH": eth_status(self._tradable)}
+
+    def quote_swap(self, *args, **kwargs):
+        return self._quote
+
+
+class FakeEthAdapter:
+    chain = "ETH"
+
+    def __init__(self):
+        self.signed = False
+        self.broadcasted = False
+
+    def build_unsigned_swap(
+        self,
+        *,
+        mnemonic,
+        vault_address,
+        amount,
+        memo,
+        nonce,
+        gas,
+        max_fee_per_gas,
+        max_priority_fee_per_gas,
+    ):
+        return SimpleNamespace(
+            to=vault_address,
+            value=amount * 10**10,
+            data="0x" + memo.encode().hex(),
+            chain_id=1,
+            gas=gas,
+            max_fee_per_gas=max_fee_per_gas,
+            fee=gas * max_fee_per_gas,
+        )
+
+    def sign(self, built):
+        self.signed = True
+        return "0x02ff"
+
+    def broadcast(self, raw_hex):
+        self.broadcasted = True
+        return "0xhash"
+
+
+def eth_request(amount=2580000):
+    return SwapRequest(
+        from_asset="ETH.ETH", to_asset="BTC.BTC", amount=amount, destination="bc1qdest"
+    )
+
+
+def prepare_eth(thor=None, adapter=None, amount=2580000):
+    return prepare_eth_swap(
+        thorchain=thor or FakeEthThor(),
+        adapter=adapter or FakeEthAdapter(),
+        mnemonic="m",
+        request=eth_request(amount),
+        nonce=0,
+        gas=60000,
+        max_fee_per_gas=20_000_000_000,
+        max_priority_fee_per_gas=1_000_000_000,
+        now=0,
+        max_fee_wei=10**17,
+    )
+
+
+def test_prepare_eth_clean_passes_gate():
+    p = prepare_eth()
+    assert p.safe
+    assert p.quote.inbound_address == ETH_VAULT
+
+
+def test_prepare_eth_aborts_when_halted():
+    with pytest.raises(SwapAborted):
+        prepare_eth(thor=FakeEthThor(tradable=False))
+
+
+def test_prepare_eth_aborts_below_min():
+    with pytest.raises(SwapAborted):
+        prepare_eth(thor=FakeEthThor(quote=make_eth_quote(min_in=99999999)))
+
+
+def test_execute_eth_confirm_broadcasts():
+    adapter = FakeEthAdapter()
+    result = execute_swap(prepare_eth(adapter=adapter), adapter, confirm=True)
+    assert result.broadcast is True
+    assert result.txid == "0xhash"
+    assert adapter.signed is True

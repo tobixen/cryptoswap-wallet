@@ -20,13 +20,20 @@ import time
 from pathlib import Path
 
 from cryptoswap.keystore import HdKey, Keystore
-from cryptoswap.swap import SwapAborted, SwapRequest, execute_swap, prepare_btc_swap
+from cryptoswap.swap import (
+    SwapAborted,
+    SwapRequest,
+    execute_swap,
+    prepare_btc_swap,
+    prepare_eth_swap,
+)
 from cryptoswap.thorchain import THORCHAIN_UNIT, ThorchainClient
 
 DEFAULT_KEYSTORE = "~/.config/cryptoswap/keystore.json"
 BTC_ACCOUNT = "m/84'/0'/0'"
 BTC_RECEIVE_PATH = "m/84'/0'/0'/0/0"
 BTC_CHANGE_PATH = "m/84'/0'/0'/1/0"
+ETH_MAX_FEE_WEI = 10**16  # 0.01 ETH sanity ceiling on inbound gas
 ASSET = {"BTC": "BTC.BTC", "ETH": "ETH.ETH", "TRX": "TRON.TRX"}
 
 
@@ -169,11 +176,18 @@ def cmd_balance(args: argparse.Namespace) -> int:
 def _resolve_destination(args: argparse.Namespace, mnemonic: str | None) -> str | None:
     if args.dest:
         return args.dest
-    if ASSET[args.to_] == "ETH.ETH" and mnemonic is not None:
+    if mnemonic is None:
+        return None
+    to = ASSET[args.to_]
+    if to == "ETH.ETH":
         from cryptoswap.chains.eth import EthAdapter
 
         return EthAdapter().derive_address(mnemonic)
-    return None
+    if to == "BTC.BTC":
+        from cryptoswap.chains.btc import BtcAdapter
+
+        return BtcAdapter().derive_address(mnemonic, BTC_RECEIVE_PATH)
+    return None  # e.g. TRX: caller must pass --dest
 
 
 def cmd_quote(args: argparse.Namespace) -> int:
@@ -184,7 +198,7 @@ def cmd_quote(args: argparse.Namespace) -> int:
     # Only decrypt the keystore if we actually need to derive the destination.
     mnemonic = (
         _load_mnemonic(args)
-        if args.dest is None and ASSET[args.to_] == "ETH.ETH"
+        if args.dest is None and ASSET[args.to_] in ("ETH.ETH", "BTC.BTC")
         else None
     )
     dest = _resolve_destination(args, mnemonic)
@@ -203,10 +217,39 @@ def cmd_quote(args: argparse.Namespace) -> int:
 
 
 def cmd_swap(args: argparse.Namespace) -> int:
-    if args.from_ != "BTC":
-        print("only BTC is implemented as a swap source", file=sys.stderr)
-        return 2
+    if args.from_ == "BTC":
+        return _swap_from_btc(args)
+    if args.from_ == "ETH":
+        return _swap_from_eth(args)
+    print(f"swap source {args.from_} is not implemented", file=sys.stderr)
+    return 2
 
+
+def _confirm_and_execute(prepared, adapter, args: argparse.Namespace) -> int:  # noqa: ANN001
+    if prepared.problems:
+        print("VERIFY GATE FAILED — not safe to broadcast:", file=sys.stderr)
+        for problem in prepared.problems:
+            print(f"  - {problem}", file=sys.stderr)
+        return 1
+    if not args.confirm:
+        print("\nDRY RUN — verified OK, not broadcast. Re-run with --confirm to send.")
+        return 0
+    # The summary the caller printed is freshly quoted THIS run, so confirm
+    # against exactly what will be broadcast.
+    if not args.yes:
+        if input("\nBroadcast the swap shown above? type 'yes': ").strip() != "yes":
+            print("aborted, not broadcast.")
+            return 0
+    if time.time() >= prepared.plan.expiry:
+        print("ABORTED: quote expired while confirming; re-run.", file=sys.stderr)
+        return 1
+    result = execute_swap(prepared, adapter, confirm=True)
+    print(f"\nBROADCAST txid: {result.txid}")
+    print(f"track: cryptoswap status {result.txid}")
+    return 0
+
+
+def _swap_from_btc(args: argparse.Namespace) -> int:
     from cryptoswap.chains.scan import scan_account
 
     mnemonic = _load_mnemonic(args)
@@ -274,34 +317,61 @@ def cmd_swap(args: argparse.Namespace) -> int:
         print(f"expect:    {out:.8f} {args.to_} -> {dest}")
         print(f"memo:      {prepared.quote.memo}")
         print(f"btc fee:   {prepared.built.fee} sats @ {fee_rate} sat/vB")
+        return _confirm_and_execute(prepared, adapter, args)
 
-        if prepared.problems:
-            print("VERIFY GATE FAILED — not safe to broadcast:", file=sys.stderr)
-            for problem in prepared.problems:
-                print(f"  - {problem}", file=sys.stderr)
-            return 1
 
-        if not args.confirm:
-            print(
-                "\nDRY RUN — verified OK, not broadcast. Re-run with --confirm to send."
+def _swap_from_eth(args: argparse.Namespace) -> int:
+    if args.amount == "max":
+        print("--amount max is not yet supported for an ETH source", file=sys.stderr)
+        return 2
+    from cryptoswap.chains.eth import DEFAULT_RPC, EthAdapter
+
+    mnemonic = _load_mnemonic(args)
+    dest = _resolve_destination(args, mnemonic)
+    if dest is None:
+        print("a --dest address is required for this destination", file=sys.stderr)
+        return 2
+
+    amount = int(round(args.amount * THORCHAIN_UNIT))
+    rpc = args.eth_rpc or os.environ.get("CRYPTOSWAP_ETH_RPC") or DEFAULT_RPC
+    with EthAdapter(rpc) as adapter, ThorchainClient() as thor:
+        from_address = adapter.derive_address(mnemonic)
+        nonce = adapter.get_nonce(from_address)
+        max_fee_per_gas, max_priority_fee_per_gas = adapter.fetch_fees()
+        request = SwapRequest(
+            from_asset="ETH.ETH",
+            to_asset=ASSET[args.to_],
+            amount=amount,
+            destination=dest,
+        )
+        try:
+            prepared = prepare_eth_swap(
+                thorchain=thor,
+                adapter=adapter,
+                mnemonic=mnemonic,
+                request=request,
+                nonce=nonce,
+                gas=args.eth_gas,
+                max_fee_per_gas=max_fee_per_gas,
+                max_priority_fee_per_gas=max_priority_fee_per_gas,
+                now=int(time.time()),
+                max_fee_wei=ETH_MAX_FEE_WEI,
             )
-            return 0
-
-        # The values above are freshly quoted THIS run, not the dry-run's, so
-        # confirm against exactly what will be broadcast.
-        if not args.yes:
-            if input("\nBroadcast the swap shown above? type 'yes': ").strip() != "yes":
-                print("aborted, not broadcast.")
-                return 0
-
-        if time.time() >= prepared.plan.expiry:
-            print("ABORTED: quote expired while confirming; re-run.", file=sys.stderr)
+        except SwapAborted as exc:
+            print(f"ABORTED: {exc}", file=sys.stderr)
             return 1
 
-        result = execute_swap(prepared, adapter, confirm=True)
-        print(f"\nBROADCAST txid: {result.txid}")
-        print(f"track: cryptoswap status {result.txid}")
-    return 0
+        out = prepared.quote.expected_amount_out / THORCHAIN_UNIT
+        eth_in = amount / THORCHAIN_UNIT
+        gwei = max_fee_per_gas / 10**9
+        max_fee_eth = prepared.built.fee / 10**18
+        print(f"send:      {eth_in:.8f} ETH to {prepared.quote.inbound_address}")
+        print(f"expect:    {out:.8f} {args.to_} -> {dest}")
+        print(f"memo:      {prepared.quote.memo}")
+        print(
+            f"gas:       {args.eth_gas} @ {gwei:.2f} gwei (max {max_fee_eth:.6f} ETH)"
+        )
+        return _confirm_and_execute(prepared, adapter, args)
 
 
 def cmd_status(args: argparse.Namespace) -> int:
@@ -382,6 +452,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--yes", action="store_true", help="skip the interactive confirm (automation)"
     )
     s.add_argument("--max-fee", type=int, default=50_000, help="max BTC fee in sats")
+    s.add_argument("--eth-rpc", help="Ethereum JSON-RPC URL ($CRYPTOSWAP_ETH_RPC)")
+    s.add_argument(
+        "--eth-gas", type=int, default=60000, help="gas limit for ETH deposit"
+    )
     s.set_defaults(func=cmd_swap)
 
     s = sub.add_parser("status", help="track a swap by inbound txid")
