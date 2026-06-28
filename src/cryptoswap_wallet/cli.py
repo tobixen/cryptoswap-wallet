@@ -673,11 +673,11 @@ def _liquidity(
     args: argparse.Namespace, *, memo: str, amount: int | None, sweep: bool = False
 ) -> int:
     _warn(
-        "EXPERIMENTAL liquidity op — only LP what you can afford to lose:",
-        "risk (impermanent loss, RUNE price, protocol) scales with size",
-        "fee yield also scales with size",
-        "small positions are penalised by the ~fixed round-trip cost "
-        "(add + withdraw trigger + outbound)",
+        "only add liquidity that you can afford to lose, risks include:",
+        "experimental feature - bugs may cause lost funds",
+        "you're exposed to RUNE/CACAO volatility",
+        "volatility may cause arbitrageurs to eat your funds",
+        "for small amounts, the networking fees will probably outsize any win",
     )
     if "-" in ASSET[args.asset]:
         print("liquidity for tokens is not supported yet", file=sys.stderr)
