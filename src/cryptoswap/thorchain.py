@@ -5,15 +5,16 @@ regardless of the underlying asset's native precision (1 BTC, 1 ETH and 1 RUNE
 are all ``100_000_000`` here).
 
 The pure parsing helpers (:func:`parse_quote`, :func:`parse_inbound_addresses`)
-are kept free of any I/O so they can be tested against recorded responses, and
-``httpx`` is imported lazily so the rest of the package stays importable without
-the network dependency installed.
+are kept free of any I/O so they can be tested against recorded responses; the
+HTTP plumbing comes from :class:`cryptoswap.net.HttpClient`.
 """
 
 from __future__ import annotations
 
 import dataclasses
-from typing import TYPE_CHECKING, Any, Self
+from typing import TYPE_CHECKING, Any
+
+from cryptoswap.net import HttpClient
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -141,8 +142,8 @@ def parse_quote(payload: dict[str, Any]) -> Quote:
     )
 
 
-class ThorchainClient:
-    """Thin HTTP wrapper around the THORChain REST endpoints."""
+class ThorchainClient(HttpClient):
+    """Thin wrapper around the THORChain REST endpoints."""
 
     def __init__(
         self,
@@ -150,27 +151,21 @@ class ThorchainClient:
         client_id: str | None = None,
         timeout: float = 20.0,
     ) -> None:
-        import httpx  # lazy: keeps parsing helpers usable without the dependency
-
-        headers = {"x-client-id": client_id} if client_id else {}
-        self._http = httpx.Client(base_url=base_url, headers=headers, timeout=timeout)
-
-    def __enter__(self) -> Self:
-        return self
-
-    def __exit__(self, *exc: object) -> None:
-        self.close()
-
-    def close(self) -> None:
-        self._http.close()
+        super().__init__(timeout)
+        self.base_url = base_url.rstrip("/")
+        self._headers = {"x-client-id": client_id} if client_id else {}
 
     def inbound_addresses(self) -> dict[str, ChainStatus]:
-        resp = self._http.get("/thorchain/inbound_addresses")
+        resp = self._get(
+            f"{self.base_url}/thorchain/inbound_addresses", headers=self._headers
+        )
         resp.raise_for_status()
         return parse_inbound_addresses(resp.json())
 
     def tx_status(self, txid: str) -> dict[str, Any]:
-        resp = self._http.get(f"/thorchain/tx/status/{txid}")
+        resp = self._get(
+            f"{self.base_url}/thorchain/tx/status/{txid}", headers=self._headers
+        )
         resp.raise_for_status()
         return resp.json()
 
@@ -199,7 +194,11 @@ class ThorchainClient:
             params["streaming_quantity"] = streaming_quantity
         if tolerance_bps is not None:
             params["tolerance_bps"] = tolerance_bps
-        resp = self._http.get("/thorchain/quote/swap", params=params)
+        resp = self._get(
+            f"{self.base_url}/thorchain/quote/swap",
+            params=params,
+            headers=self._headers,
+        )
         if resp.status_code >= 400:
             try:
                 payload = resp.json()

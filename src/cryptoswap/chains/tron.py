@@ -10,11 +10,11 @@ from __future__ import annotations
 
 import hashlib
 
-import httpx
 from eth_account import Account
 from eth_account.signers.local import LocalAccount
 
 from cryptoswap.chains.base import BalanceReport
+from cryptoswap.net import HttpClient
 
 DEFAULT_TRON_DERIVATION = "m/44'/195'/0'/0/0"
 DEFAULT_TRON_API = "https://api.trongrid.io"
@@ -37,31 +37,13 @@ def base58check_encode(payload: bytes) -> str:
     return "1" * pad + out
 
 
-class TronAdapter:
+class TronAdapter(HttpClient):
     chain = "TRON"
     asset = "TRON.TRX"
 
     def __init__(self, api_url: str = DEFAULT_TRON_API, timeout: float = 20.0) -> None:
+        super().__init__(timeout)
         self.api_url = api_url.rstrip("/")
-        self._timeout = timeout
-        self._client: httpx.Client | None = None
-
-    @property
-    def _http(self) -> httpx.Client:
-        if self._client is None:
-            self._client = httpx.Client(timeout=self._timeout)
-        return self._client
-
-    def close(self) -> None:
-        if self._client is not None:
-            self._client.close()
-            self._client = None
-
-    def __enter__(self) -> TronAdapter:
-        return self
-
-    def __exit__(self, *exc: object) -> None:
-        self.close()
 
     def _key(self, mnemonic: str, path: str) -> LocalAccount:
         return Account.from_mnemonic(mnemonic, account_path=path)
@@ -72,7 +54,7 @@ class TronAdapter:
 
     def fetch_balance(self, address: str) -> int:
         """Confirmed TRX balance in sun (1 TRX = 1e6 sun); 0 for unused accounts."""
-        resp = self._http.get(f"{self.api_url}/v1/accounts/{address}")
+        resp = self._get(f"{self.api_url}/v1/accounts/{address}")
         resp.raise_for_status()
         data = resp.json().get("data", [])
         return int(data[0].get("balance", 0)) if data else 0

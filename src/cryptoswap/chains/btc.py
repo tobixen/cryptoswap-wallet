@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import dataclasses
 
-import httpx
 from bitcoinlib.keys import HDKey
 from bitcoinlib.mnemonic import Mnemonic
 from bitcoinlib.transactions import Transaction
@@ -26,6 +25,7 @@ from cryptoswap.chains.coins import (
     encode_op_return,
     select_coins,
 )
+from cryptoswap.net import HttpClient
 from cryptoswap.verify import TxOutput
 
 DEFAULT_ESPLORA = "https://blockstream.info/api"
@@ -81,7 +81,7 @@ def _extract_outputs(tx: Transaction) -> list[TxOutput]:
     return outputs
 
 
-class BtcAdapter:
+class BtcAdapter(HttpClient):
     """ChainAdapter for Bitcoin (native segwit / P2WPKH)."""
 
     chain = "BTC"
@@ -90,28 +90,8 @@ class BtcAdapter:
     def __init__(
         self, esplora_url: str = DEFAULT_ESPLORA, timeout: float = 20.0
     ) -> None:
+        super().__init__(timeout)
         self.esplora_url = esplora_url.rstrip("/")
-        self._timeout = timeout
-        self._client: httpx.Client | None = None
-
-    @property
-    def _http(self) -> httpx.Client:
-        # One pooled, thread-safe client reused across the (concurrent) scan;
-        # a fresh connection per address made balance scans take ~40s.
-        if self._client is None:
-            self._client = httpx.Client(timeout=self._timeout)
-        return self._client
-
-    def close(self) -> None:
-        if self._client is not None:
-            self._client.close()
-            self._client = None
-
-    def __enter__(self) -> BtcAdapter:
-        return self
-
-    def __exit__(self, *exc: object) -> None:
-        self.close()
 
     def _hdkey(self, mnemonic: str, path: str) -> HDKey:
         seed = Mnemonic().to_seed(mnemonic)
@@ -183,17 +163,18 @@ class BtcAdapter:
 
     def address_info(self, address: str) -> AddressInfo:
         """History + confirmed/pending balance from a single /address call."""
-        resp = self._http.get(f"{self.esplora_url}/address/{address}")
+        resp = self._get(f"{self.esplora_url}/address/{address}")
         resp.raise_for_status()
         return parse_address_info(resp.json())
 
     def fetch_utxos(self, address: str) -> list[Utxo]:
-        resp = self._http.get(f"{self.esplora_url}/address/{address}/utxo")
+        resp = self._get(f"{self.esplora_url}/address/{address}/utxo")
         resp.raise_for_status()
+        # Fail closed: only spend UTXOs explicitly marked confirmed (L1).
         return [
             Utxo(txid=x["txid"], vout=x["vout"], value=x["value"], address=address)
             for x in resp.json()
-            if x.get("status", {}).get("confirmed", True)
+            if x.get("status", {}).get("confirmed", False)
         ]
 
     def fetch_balance(self, address: str) -> int:
@@ -218,12 +199,13 @@ class BtcAdapter:
         )
 
     def fetch_fee_rate(self, target_blocks: int = 6) -> float:
-        resp = self._http.get(f"{self.esplora_url}/fee-estimates")
+        resp = self._get(f"{self.esplora_url}/fee-estimates")
         resp.raise_for_status()
         estimates = resp.json()
-        return float(estimates.get(str(target_blocks)) or min(estimates.values()))
+        # Fall back to the *highest* known rate, never the cheapest/slowest (M2).
+        return float(estimates.get(str(target_blocks)) or max(estimates.values()))
 
     def broadcast(self, raw_hex: str) -> str:
-        resp = self._http.post(f"{self.esplora_url}/tx", content=raw_hex)
+        resp = self._post(f"{self.esplora_url}/tx", data=raw_hex)
         resp.raise_for_status()
         return resp.text.strip()

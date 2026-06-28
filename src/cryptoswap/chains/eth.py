@@ -14,13 +14,13 @@ from __future__ import annotations
 import dataclasses
 from typing import Any
 
-import httpx
 from Crypto.Hash import keccak
 from eth_account import Account
 from eth_account.signers.local import LocalAccount
 
 from cryptoswap.chains.base import BalanceReport
 from cryptoswap.chains.coins import InsufficientFunds
+from cryptoswap.net import HttpClient
 from cryptoswap.verify import WEI_PER_THORCHAIN_UNIT
 
 DEFAULT_ETH_DERIVATION = "m/44'/60'/0'/0/0"
@@ -81,33 +81,15 @@ class EthBuiltSwap:
         return self.gas * self.max_fee_per_gas
 
 
-class EthAdapter:
+class EthAdapter(HttpClient):
     """ChainAdapter for native Ethereum."""
 
     chain = "ETH"
     asset = "ETH.ETH"
 
     def __init__(self, rpc_url: str = DEFAULT_RPC, timeout: float = 20.0) -> None:
+        super().__init__(timeout)
         self.rpc_url = rpc_url
-        self._timeout = timeout
-        self._client: httpx.Client | None = None
-
-    @property
-    def _http(self) -> httpx.Client:
-        if self._client is None:
-            self._client = httpx.Client(timeout=self._timeout)
-        return self._client
-
-    def close(self) -> None:
-        if self._client is not None:
-            self._client.close()
-            self._client = None
-
-    def __enter__(self) -> EthAdapter:
-        return self
-
-    def __exit__(self, *exc: object) -> None:
-        self.close()
 
     def _key(self, mnemonic: str, path: str) -> LocalAccount:
         return Account.from_mnemonic(mnemonic, account_path=path)
@@ -118,7 +100,7 @@ class EthAdapter:
     # --- JSON-RPC ---
 
     def _rpc(self, method: str, params: list[object]) -> object:
-        resp = self._http.post(
+        resp = self._post(
             self.rpc_url,
             json={"jsonrpc": "2.0", "id": 1, "method": method, "params": params},
         )

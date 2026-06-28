@@ -19,9 +19,8 @@ import sys
 import time
 from pathlib import Path
 
-import httpx
-
 from cryptoswap.keystore import HdKey, Keystore
+from cryptoswap.net import HTTP_ERRORS
 from cryptoswap.swap import (
     SwapAborted,
     SwapRequest,
@@ -200,7 +199,7 @@ def cmd_balance(args: argparse.Namespace) -> int:
             try:
                 report = adapter.wallet_balance(mnemonic)
             except (
-                httpx.HTTPError,
+                *HTTP_ERRORS,
                 RuntimeError,
                 KeyError,
                 ValueError,
