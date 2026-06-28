@@ -1,5 +1,51 @@
 # TODO
 
+## Next up (priority order)
+
+Owner's requested order; two-sided liquidity comes *after* these.
+
+1. **`send` to an external address — BTC first.** A plain on-chain transfer (no
+   swap, no memo) to a user-supplied address. Reuse the BTC spending path (UTXO
+   scan, fee/change, sign, broadcast) minus the vault+memo. Other chains
+   (ETH/TRX/…) can follow later. Supersedes the older "send" note under *Swap
+   backends* below.
+
+2. **TRX liquidity.** `_liquidity` currently handles only BTC and ETH (TRON
+   falls through to "not implemented"). Adding it needs TRON as a swap *source*
+   — signing a TRX transfer to the inbound vault with the `+:POOL` memo — so it
+   depends on the TRX-source work under *Other known gaps* (tronpy + a TRON
+   endpoint). Confirm a TRX pool actually exists on the chosen backend first.
+
+3. **More swap *destinations* via external `--dest` addresses.** Destination-only
+   support is cheap: THORChain/Maya pay the output to any valid address on the
+   destination chain, so a new destination asset mainly needs an `ASSET` entry +
+   destination-address validation — no signing and no full adapter, and with
+   `--dest` the user supplies the address so we need no key derivation for that
+   chain either. Good value/effort. Candidates: LTC, DOGE, BCH, ATOM, XRP, SOL,
+   plus the Maya-only DASH/ZEC/ADA/ARB already noted under *Swap backends*. Ties
+   into A5's `_resolve_destination` table-drive.
+
+4. **Two-sided (symmetric) liquidity — gated behind a RUNE/THORChain backend.**
+   A symmetric add is two *linked* deposits: the asset leg (`+:POOL:<thor1addr>`
+   to the inbound vault) and a RUNE leg (a Cosmos `MsgDeposit` carrying RUNE with
+   memo `+:POOL:<assetaddr>`), paired by the protocol via the cross-referenced
+   addresses within a time window. The wallet has none of the RUNE side today, so
+   this requires:
+   - `thor1…` address derivation (bech32, secp256k1, Cosmos HD path
+     `m/44'/931'/0'/0/0`);
+   - build + sign + broadcast a Cosmos SDK `MsgDeposit` (protobuf tx, account
+     number/sequence from a THORNode, gas) — a new signing stack and dependency
+     (e.g. `cosmpy`);
+   - two-leg coordination + partial-failure handling (one leg lands, the other
+     doesn't → lopsided/stuck position) — material risk on an experimental,
+     loss-prone feature.
+
+   The same backend also unlocks RUNE as a swap asset (to/from), so it is not
+   wasted work. Note that one-sided LP already carries ~50% RUNE price exposure;
+   symmetric mainly buys *no entry slip* in exchange for sourcing and holding
+   RUNE. Sensible sub-phasing: (a) `thor1` derivation + RUNE balance (read-only,
+   testable now); (b) `MsgDeposit` sign/broadcast; (c) symmetric add/withdraw.
+
 ## Spend unconfirmed inbound via CPFP (`--allow-unconfirmed`)
 
 Currently `fetch_utxos` is confirmed-only and the fee model is a flat
@@ -64,7 +110,7 @@ lowest-price routing across backends.
 
 - **Maya-only assets**: expose DASH, ZEC, ADA (Cardano), ARB (Arbitrum) — Maya
   has pools THORChain lacks; just needs `ASSET` entries + dest derivation.
-- **`send` to external address**: still pending (plain transfer, no swap memo).
+- **`send` to external address**: see *Next up* item 1 (BTC first).
 - **BasicSwap backend** (trustless P2P / privacy / XMR): orchestrate its daemon
   via API; needs full nodes (heavy) and a different custody seam. Future.
 - **`--backend auto` for liquidity**: LP currently THORChain-only.
