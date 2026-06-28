@@ -18,6 +18,7 @@ from bitcoinlib.keys import HDKey
 from bitcoinlib.mnemonic import Mnemonic
 from bitcoinlib.transactions import Transaction
 
+from cryptoswap.chains.base import BalanceReport
 from cryptoswap.chains.coins import (
     InsufficientFunds,
     Utxo,
@@ -29,6 +30,7 @@ from cryptoswap.verify import TxOutput
 
 DEFAULT_ESPLORA = "https://blockstream.info/api"
 DEFAULT_DERIVATION = "m/84'/0'/0'/0/0"
+ACCOUNT = "m/84'/0'/0'"
 
 
 def generate_mnemonic(strength: int = 128) -> str:
@@ -196,6 +198,24 @@ class BtcAdapter:
 
     def fetch_balance(self, address: str) -> int:
         return self.address_info(address).confirmed
+
+    def wallet_balance(self, mnemonic: str, account: str = ACCOUNT) -> BalanceReport:
+        from cryptoswap.chains.scan import scan_account
+
+        records = scan_account(
+            derive_address=lambda p: self.derive_address(mnemonic, p),
+            probe=self.address_info,
+            account=account,
+        )
+        confirmed = sum(info.confirmed for _, _, info in records)
+        pending = sum(info.pending for _, _, info in records)
+        return BalanceReport(
+            symbol="BTC",
+            confirmed=confirmed,
+            decimals=8,
+            pending=pending,
+            note=f"({len(records)} used addresses)",
+        )
 
     def fetch_fee_rate(self, target_blocks: int = 6) -> float:
         resp = self._http.get(f"{self.esplora_url}/fee-estimates")

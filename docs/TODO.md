@@ -34,11 +34,13 @@ Notes / caveats (see the chat that prompted this):
 - **ETH gas estimation**: ETH source uses a fixed `--eth-gas` (default 60000);
   could call `eth_estimateGas` against the quote's vault/memo instead.
 - **TRON as a swap source**: native TRX source adapter (tronpy) behind
-  `ChainAdapter`. ETH source is done (native ETH only).
+  `ChainAdapter`. ETH source is done; TRON is destination-only so far
+  (derivation + TRX balance + `--to TRX`).
 - **Token (USDT/USDC) swaps**: THORChain has `ETH.USDT`, `TRON.USDT`,
-  `ETH.USDC`, etc. As a *destination* (e.g. BTC→TRON.USDT) it's mostly an
-  asset-map + destination-address addition. As a *source* it needs the ERC-20 /
-  TRC-20 `approve` + `router.depositWithExpiry` path.
+  `ETH.USDC`, etc. As a *destination* (e.g. BTC/ETH→TRON.USDT) it is now mostly
+  just an asset-map entry — the Tron destination address already derives. As a
+  *source* it needs the ERC-20 / TRC-20 `approve` + `router.depositWithExpiry`
+  path. Also: showing token balances (not just native TRX/ETH) in `balance`.
 - **Phase 2 — semi-automatic convert**: human-in-the-loop "convert everything
   above dust since last run" command (accumulate small inbounds, stream large
   swaps, idempotent on processed txids).

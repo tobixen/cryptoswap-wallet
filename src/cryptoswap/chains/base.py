@@ -1,14 +1,36 @@
 """The common interface every chain adapter implements.
 
 The uniform surface across chains is intentionally small: address derivation,
-balance lookup, and broadcast. Building the swap transaction is chain-specific
-(UTXO vs account models differ), but every adapter funnels its result through
-the shared :mod:`cryptoswap.verify` gate before signing.
+a wallet balance (so `balance` scales without per-chain code), and broadcast.
+Building the swap transaction is chain-specific (UTXO vs account models differ),
+but every adapter funnels its result through the shared :mod:`cryptoswap.verify`
+gate before signing.
 """
 
 from __future__ import annotations
 
+import dataclasses
 from typing import Protocol, runtime_checkable
+
+
+@dataclasses.dataclass(frozen=True)
+class BalanceReport:
+    """A chain-agnostic balance, in the chain's base units."""
+
+    symbol: str
+    confirmed: int
+    decimals: int
+    pending: int = 0
+    note: str = ""
+
+    def format(self) -> str:
+        amount = self.confirmed / 10**self.decimals
+        line = f"{self.symbol}: {amount:.8f}"
+        if self.pending:
+            line += f" (+{self.pending / 10**self.decimals:.8f} pending)"
+        if self.note:
+            line += f"  {self.note}"
+        return line
 
 
 @runtime_checkable
@@ -18,8 +40,8 @@ class ChainAdapter(Protocol):
 
     def derive_address(self, mnemonic: str, path: str) -> str: ...
 
-    def fetch_balance(self, address: str) -> int:
-        """Confirmed balance in the chain's native base unit (sats for BTC)."""
+    def wallet_balance(self, mnemonic: str) -> BalanceReport:
+        """The wallet's balance for this chain, derived from the mnemonic."""
         ...
 
     def broadcast(self, raw_hex: str) -> str:

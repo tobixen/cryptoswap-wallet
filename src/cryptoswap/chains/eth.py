@@ -19,6 +19,7 @@ from Crypto.Hash import keccak
 from eth_account import Account
 from eth_account.signers.local import LocalAccount
 
+from cryptoswap.chains.base import BalanceReport
 from cryptoswap.verify import WEI_PER_THORCHAIN_UNIT
 
 DEFAULT_ETH_DERIVATION = "m/44'/60'/0'/0/0"
@@ -116,6 +117,15 @@ class EthAdapter:
 
     def fetch_balance(self, address: str) -> int:
         return int(self._rpc("eth_getBalance", [address, "latest"]), 16)
+
+    def wallet_balance(self, mnemonic: str) -> BalanceReport:
+        address = self.derive_address(mnemonic)
+        return BalanceReport(
+            symbol="ETH",
+            confirmed=self.fetch_balance(address),
+            decimals=18,
+            note=f"({address})",
+        )
 
     def fetch_fees(self) -> tuple[int, int]:
         """Return ``(max_fee_per_gas, max_priority_fee_per_gas)`` in wei."""

@@ -76,6 +76,22 @@ def _eth_adapter(args: argparse.Namespace):  # noqa: ANN202 (EthAdapter, lazy im
     return EthAdapter(url)
 
 
+def _tron_adapter(args: argparse.Namespace):  # noqa: ANN202 (TronAdapter, lazy import)
+    from cryptoswap.chains.tron import DEFAULT_TRON_API, TronAdapter
+
+    url = (
+        getattr(args, "tron_api", None)
+        or os.environ.get("CRYPTOSWAP_TRON_API")
+        or DEFAULT_TRON_API
+    )
+    return TronAdapter(url)
+
+
+def _wallet_adapters(args: argparse.Namespace) -> list:  # noqa: ANN201
+    """Adapters whose balances `balance` reports — add a chain here and it scales."""
+    return [_btc_adapter(args), _eth_adapter(args), _tron_adapter(args)]
+
+
 def _load_mnemonic(args: argparse.Namespace) -> str:
     keystore = Keystore.load(_keystore_path(args), _passphrase())
     for entry in keystore.entries:
@@ -157,40 +173,31 @@ def cmd_list(args: argparse.Namespace) -> int:
 def cmd_address(args: argparse.Namespace) -> int:
     from cryptoswap.chains.btc import BtcAdapter
     from cryptoswap.chains.eth import EthAdapter
+    from cryptoswap.chains.tron import TronAdapter
 
     mnemonic = _load_mnemonic(args)
-    print("BTC:", BtcAdapter().derive_address(mnemonic, BTC_RECEIVE_PATH))
-    print("ETH:", EthAdapter().derive_address(mnemonic))
+    print("BTC: ", BtcAdapter().derive_address(mnemonic, BTC_RECEIVE_PATH))
+    print("ETH: ", EthAdapter().derive_address(mnemonic))
+    print("TRON:", TronAdapter().derive_address(mnemonic))
     return 0
 
 
 def cmd_balance(args: argparse.Namespace) -> int:
-    from cryptoswap.chains.scan import scan_account
-
     mnemonic = _load_mnemonic(args)
-    with _btc_adapter(args) as adapter:
-        records = scan_account(
-            derive_address=lambda p: adapter.derive_address(mnemonic, p),
-            probe=adapter.address_info,
-            account=BTC_ACCOUNT,
-        )
-    confirmed = sum(info.confirmed for _, _, info in records)
-    pending = sum(info.pending for _, _, info in records)
-    print(
-        f"BTC confirmed: {confirmed} sats = {confirmed / THORCHAIN_UNIT:.8f} BTC "
-        f"({len(records)} used addresses)"
-    )
-    if pending:
-        pbtc = pending / THORCHAIN_UNIT
-        print(f"BTC pending: {pending} sats = {pbtc:.8f} BTC (mempool)")
-
-    with _eth_adapter(args) as eth:
-        eth_address = eth.derive_address(mnemonic)
-        try:
-            wei = eth.fetch_balance(eth_address)
-            print(f"ETH: {wei / 10**18:.8f} ETH  ({eth_address})")
-        except (httpx.HTTPError, RuntimeError, KeyError, ValueError) as exc:
-            print(f"ETH: balance unavailable ({exc})", file=sys.stderr)
+    for adapter in _wallet_adapters(args):
+        with adapter:
+            try:
+                report = adapter.wallet_balance(mnemonic)
+            except (
+                httpx.HTTPError,
+                RuntimeError,
+                KeyError,
+                ValueError,
+                IndexError,
+            ) as exc:
+                print(f"{adapter.chain}: balance unavailable ({exc})", file=sys.stderr)
+                continue
+            print(report.format())
     return 0
 
 
@@ -208,7 +215,11 @@ def _resolve_destination(args: argparse.Namespace, mnemonic: str | None) -> str 
         from cryptoswap.chains.btc import BtcAdapter
 
         return BtcAdapter().derive_address(mnemonic, BTC_RECEIVE_PATH)
-    return None  # e.g. TRX: caller must pass --dest
+    if to == "TRON.TRX":
+        from cryptoswap.chains.tron import TronAdapter
+
+        return TronAdapter().derive_address(mnemonic)
+    return None  # other targets: caller must pass --dest
 
 
 def cmd_quote(args: argparse.Namespace) -> int:
@@ -219,7 +230,7 @@ def cmd_quote(args: argparse.Namespace) -> int:
     # Only decrypt the keystore if we actually need to derive the destination.
     mnemonic = (
         _load_mnemonic(args)
-        if args.dest is None and ASSET[args.to_] in ("ETH.ETH", "BTC.BTC")
+        if args.dest is None and ASSET[args.to_] in ("ETH.ETH", "BTC.BTC", "TRON.TRX")
         else None
     )
     dest = _resolve_destination(args, mnemonic)
@@ -456,9 +467,10 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--key")
     s.set_defaults(func=cmd_address)
 
-    s = sub.add_parser("balance", help="scan and show BTC and ETH balances")
+    s = sub.add_parser("balance", help="show balances across supported chains")
     s.add_argument("--key")
     s.add_argument("--eth-rpc", help="Ethereum JSON-RPC URL ($CRYPTOSWAP_ETH_RPC)")
+    s.add_argument("--tron-api", help="TRON API base URL ($CRYPTOSWAP_TRON_API)")
     s.set_defaults(func=cmd_balance)
 
     s = sub.add_parser("quote", help="show a THORChain swap quote")
