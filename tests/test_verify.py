@@ -9,10 +9,12 @@ from cryptoswap_wallet.verify import (
     EthSwapPlan,
     SendPlan,
     SwapPlan,
+    TronSwapPlan,
     TxOutput,
     verify_btc_send,
     verify_btc_swap,
     verify_eth_swap,
+    verify_tron_swap,
 )
 
 VAULT = "bc1qct4mxayrdy96d4py20l4u02mu06r667f42p9fp"
@@ -269,3 +271,81 @@ def test_eth_accepts_memo_paying_destination():
         destination="bc1qexampledest",
     )
     assert eth_verify(plan=plan) == []
+
+
+# --- TRON deposit verify gate (swap source + liquidity) ---
+
+TRON_VAULT = "TNVaVKErJ3pdC2nVjC4d4n6Te8H1Lz9Yth"
+TRON_DEST = "0x1111111111111111111111111111111111111111"
+TRON_MEMO = f"=:ETH.ETH:{TRON_DEST}:6700000"
+TRON_PLAN = TronSwapPlan(
+    inbound_address=TRON_VAULT,
+    amount_sun=1_500_000,
+    memo=TRON_MEMO,
+    expiry=2000,
+    destination=TRON_DEST,
+)
+
+
+def tron_verify(
+    contract_type="TransferContract",
+    to=TRON_VAULT,
+    amount_sun=1_500_000,
+    memo=TRON_MEMO,
+    now=1000,
+    plan=TRON_PLAN,
+):
+    return verify_tron_swap(
+        contract_type=contract_type,
+        to_address=to,
+        amount_sun=amount_sun,
+        memo=memo,
+        plan=plan,
+        now=now,
+    )
+
+
+def test_tron_valid_has_no_problems():
+    assert tron_verify() == []
+
+
+def test_tron_wrong_contract_type():
+    assert any(
+        "contract" in p.lower()
+        for p in tron_verify(contract_type="TriggerSmartContract")
+    )
+
+
+def test_tron_wrong_vault():
+    assert any("vault" in p.lower() for p in tron_verify(to="TWrongVaultAddr"))
+
+
+def test_tron_wrong_amount():
+    assert any("amount" in p for p in tron_verify(amount_sun=1_500_001))
+
+
+def test_tron_wrong_memo():
+    assert any("memo" in p.lower() for p in tron_verify(memo="=:ETH.ETH:0xdead"))
+
+
+def test_tron_expired():
+    assert any("expired" in p for p in tron_verify(now=3000))
+
+
+def test_tron_rejects_memo_not_paying_destination():
+    plan = TronSwapPlan(
+        inbound_address=TRON_VAULT,
+        amount_sun=1_500_000,
+        memo=TRON_MEMO,
+        expiry=2000,
+        destination="0x2222222222222222222222222222222222222222",
+    )
+    assert any("destination" in p.lower() for p in tron_verify(plan=plan))
+
+
+def test_tron_lp_deposit_no_destination_check():
+    # An LP deposit has no destination; the memo is +:POOL.
+    plan = TronSwapPlan(
+        inbound_address=TRON_VAULT, amount_sun=1_500_000, memo="+:TRON.TRX", expiry=2000
+    )
+    assert tron_verify(memo="+:TRON.TRX", plan=plan) == []

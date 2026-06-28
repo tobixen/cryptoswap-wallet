@@ -307,6 +307,8 @@ def cmd_swap(args: argparse.Namespace) -> int:
         return _swap_from_btc(args)
     if chain == "ETH":  # native ETH and ERC-20 tokens (e.g. USDT-ETH)
         return _swap_from_eth(args)
+    if chain == "TRON":  # native TRX (TRC-20 tokens not yet a source)
+        return _swap_from_tron(args)
     print(f"swap source {args.from_} is not implemented yet", file=sys.stderr)
     return 2
 
@@ -564,6 +566,60 @@ def _swap_from_eth(args: argparse.Namespace) -> int:
             return _confirm_and_execute(prepared, adapter, args)
 
 
+def _swap_from_tron(args: argparse.Namespace) -> int:
+    if "-" in ASSET[args.from_]:
+        print(
+            "TRC-20 tokens are not a swap source yet (native TRX only)", file=sys.stderr
+        )
+        return 2
+    if args.amount == "max":
+        print("--amount max is not supported for TRON yet", file=sys.stderr)
+        return 2
+
+    mnemonic = _load_mnemonic(args)
+    dest = _resolve_destination(args, mnemonic)
+    if dest is None:
+        print("a --dest address is required for this destination", file=sys.stderr)
+        return 2
+
+    amount = int(round(args.amount * THORCHAIN_UNIT))
+    with _tron_adapter(args) as adapter:
+        request = SwapRequest(
+            from_asset=ASSET[args.from_],
+            to_asset=ASSET[args.to_],
+            amount=amount,
+            destination=dest,
+        )
+        try:
+            backend = _select_backend(
+                args,
+                from_asset=request.from_asset,
+                to_asset=request.to_asset,
+                amount=amount,
+                destination=dest,
+            )
+            with backend.client as thor:
+                prepared = prepare_swap(
+                    thorchain=thor,
+                    adapter=adapter,
+                    request=request,
+                    now=int(time.time()),
+                    mnemonic=mnemonic,
+                )
+        except (SwapAborted, ValueError) as exc:
+            print(f"ABORTED: {exc}", file=sys.stderr)
+            return 1
+
+        out = prepared.quote.expected_amount_out / THORCHAIN_UNIT
+        vault = prepared.quote.inbound_address
+        print(f"via:     {backend.name}")
+        print(f"send:    {prepared.plan.amount_sun} sun to {vault}")
+        print(f"expect:  {out:.8f} {args.to_} -> {dest}")
+        print(f"memo:    {prepared.quote.memo}")
+        print("trx fee: paid in bandwidth/energy (not deducted from the transfer)")
+        return _confirm_and_execute(prepared, adapter, args)
+
+
 def cmd_add_liquidity(args: argparse.Namespace) -> int:
     from cryptoswap_wallet.liquidity import add_liquidity_memo
 
@@ -595,6 +651,8 @@ def _liquidity(args: argparse.Namespace, *, memo: str, amount: int | None) -> in
         return _liquidity_btc(args, memo=memo, amount=amount)
     if chain == "ETH":
         return _liquidity_eth(args, memo=memo, amount=amount)
+    if chain == "TRON":
+        return _liquidity_tron(args, memo=memo, amount=amount)
     print(f"liquidity on {chain} is not implemented", file=sys.stderr)
     return 2
 
@@ -677,6 +735,30 @@ def _liquidity_eth(args: argparse.Namespace, *, memo: str, amount: int | None) -
         print(f"send:    {eth_amt:.8f} ETH to {prepared.plan.inbound_address}")
         print(f"memo:    {memo}")
         print(f"max fee: {prepared.built.fee / 10**18:.6f} ETH")
+        return _confirm_and_execute(prepared, adapter, args)
+
+
+def _liquidity_tron(args: argparse.Namespace, *, memo: str, amount: int | None) -> int:
+    from cryptoswap_wallet.swap import prepare_liquidity
+
+    mnemonic = _load_mnemonic(args)
+    with _tron_adapter(args) as adapter, ThorchainClient() as thor:
+        try:
+            prepared = prepare_liquidity(
+                thorchain=thor,
+                adapter=adapter,
+                memo=memo,
+                amount=amount,
+                now=int(time.time()),
+                mnemonic=mnemonic,
+            )
+        except (SwapAborted, ValueError) as exc:
+            print(f"ABORTED: {exc}", file=sys.stderr)
+            return 1
+        vault = prepared.plan.inbound_address
+        print(f"send:    {prepared.plan.amount_sun} sun to {vault}")
+        print(f"memo:    {memo}")
+        print("trx fee: paid in bandwidth/energy (not deducted from the transfer)")
         return _confirm_and_execute(prepared, adapter, args)
 
 

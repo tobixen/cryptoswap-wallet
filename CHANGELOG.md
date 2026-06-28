@@ -11,10 +11,13 @@ automatically from git tags (PEP 440 / SemVer).
   (HD seeds + raw keys, AES-256-GCM, atomic writes).
 - Chain adapters: BTC (bitcoinlib), ETH + ERC-20 (eth-account/eth-abi),
   TRON (address + balance).
-- Swaps: BTC and ETH (native) and USDT-ETH (ERC-20) as sources; BTC, ETH, TRX,
-  USDT-TRON and USDT-ETH as destinations. `--amount max` sweep for BTC/ETH.
+- Swaps: BTC, ETH (native), TRX (native) and USDT-ETH (ERC-20) as sources; BTC,
+  ETH, TRX, USDT-TRON and USDT-ETH as destinations. `--amount max` sweep for
+  BTC/ETH. TRX source signs a native TransferContract with the memo in tx data
+  (tronpy), via a keyless public node.
 - Registry-based multi-chain `balance`; `quote`, `status`, `address`.
-- Experimental `add-liquidity` / `withdraw-liquidity` (BTC, ETH, single-sided).
+- Experimental `add-liquidity` / `withdraw-liquidity` (BTC, ETH, TRX,
+  single-sided).
 - `send` to an external address (BTC; plain transfer, no swap/memo), with
   `--amount max` to sweep. Guarded by a dedicated verify gate.
 - Packaging: Hatch + hatch-vcs, `make install`, `--version`, CI, and PyPI

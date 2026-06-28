@@ -195,6 +195,59 @@ def verify_btc_send(
 
 
 @dataclasses.dataclass(frozen=True)
+class TronSwapPlan:
+    """What we intend a TRON deposit transaction to do (swap or LP).
+
+    ``amount_sun`` is the native TRX amount (1 TRX = 1e6 sun) sent to the vault;
+    ``memo`` is carried in the transaction's ``data`` field. A swap sets
+    ``destination`` (which must appear in the memo); an LP deposit leaves it
+    blank.
+    """
+
+    inbound_address: str  # base58 vault address
+    amount_sun: int
+    memo: str
+    expiry: int
+    destination: str = ""
+
+
+def verify_tron_swap(
+    *,
+    contract_type: str,
+    to_address: str,
+    amount_sun: int,
+    memo: str,
+    plan: TronSwapPlan,
+    now: int,
+) -> list[str]:
+    """Return reasons a TRON deposit tx does not match ``plan``; empty means safe.
+
+    A TRON swap/LP deposit is a single ``TransferContract`` paying ``amount_sun``
+    to the vault with ``memo`` in the tx data. A wrong vault, amount or memo
+    means irreversible loss. ``memo`` is the already-decoded UTF-8 string. There
+    is no fee output to check (TRON charges bandwidth/energy separately).
+    """
+    problems: list[str] = []
+
+    if now >= plan.expiry:
+        problems.append(f"quote expired (now {now} >= expiry {plan.expiry})")
+    if contract_type != "TransferContract":
+        problems.append(f"contract type {contract_type!r} != 'TransferContract'")
+    if to_address != plan.inbound_address:
+        problems.append(f"tx pays {to_address} != vault {plan.inbound_address}")
+    if amount_sun != plan.amount_sun:
+        problems.append(f"tx amount {amount_sun} sun != intended {plan.amount_sun}")
+    if memo != plan.memo:
+        problems.append(f"tx memo {memo!r} != intended {plan.memo!r}")
+    if not memo_pays_destination(plan.destination, plan.memo):
+        problems.append(
+            f"quoted memo {plan.memo!r} does not pay destination {plan.destination}"
+        )
+
+    return problems
+
+
+@dataclasses.dataclass(frozen=True)
 class EthSwapPlan:
     """What we intend an ETH deposit transaction to do (from a THORChain quote)."""
 

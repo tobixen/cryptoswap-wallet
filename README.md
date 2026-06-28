@@ -28,10 +28,10 @@ override.
 | `balance` | BTC, ETH, TRX | native balances (token balances not shown yet) |
 | `address` | BTC, ETH, TRON | derived from the seed |
 | `quote` | any supported asset | read-only price preview |
-| `swap` (source) | BTC, ETH, USDT-ETH | the asset you spend |
+| `swap` (source) | BTC, ETH, TRX, USDT-ETH | the asset you spend |
 | `swap` (destination) | BTC, ETH, TRX, USDT-ETH, USDT-TRON | where funds land |
 | `send` (to external address) | BTC | plain transfer, no swap; ETH/TRX planned |
-| `add-liquidity` / `withdraw-liquidity` | BTC, ETH | single-sided, **experimental** |
+| `add-liquidity` / `withdraw-liquidity` | BTC, ETH, TRX | single-sided, **experimental** |
 | `status` | all | track a swap by its inbound txid |
 | `--amount max` | BTC, ETH (source) | sweep the whole balance minus fees |
 | `--backend auto` | quote, swap | compares **THORChain + Maya** and routes to the best price |
@@ -53,7 +53,7 @@ implementation order.
 | BTC | Bitcoin | UTXO | full | |
 | ETH | Ethereum | EVM | full | |
 | USDT-ETH | Tether | ERC-20 token | full | |
-| TRX | TRON | TRON | partial | |
+| TRX | TRON | TRON | full | |
 | USDT-TRON | Tether | TRC-20 token | partial | |
 | BSC / BNB | BNB Smart Chain | EVM | none | |
 | AVAX | Avalanche C-Chain | EVM | none | |
@@ -69,8 +69,8 @@ implementation order.
 | XMR | Monero | Monero | none | no live THORChain pool yet |
 | TCY | THORChain reward token | THORChain token | none | niche; low priority |
 
-EVM is the recommended next family (most coverage, least risk); then UTXO; TRON
-sources are code-ready but need a working endpoint. See `docs/TODO.md` for detail.
+EVM is the recommended next family (most coverage, least risk); then UTXO. See
+`docs/TODO.md` for detail.
 
 ### Per-feature support
 
@@ -101,7 +101,7 @@ features yet.
 | BTC       |  ✅  |  ✅ |  ✅ |  ✅  |  ✅  |  ✅ |
 | ETH       |  ✅  |  ✅ |  ✅ |  ✅  |      |  ✅ |
 | USDT-ETH  |  ✅  |     |  ✅ |  ✅  |      |     |
-| TRX       |  ✅  |  ✅ |  ✅ |  ◑   |      |     |
+| TRX       |  ✅  |  ✅ |  ✅ |  ✅  |      |  ✅ |
 | USDT-TRON |  ✅  |     |  ✅ |      |      |     |
 
 ## Usage

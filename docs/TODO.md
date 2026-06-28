@@ -10,13 +10,12 @@ Owner's requested order; two-sided liquidity comes *after* these.
    `verify_btc_send` gate. ETH/TRX sends still to do (need account-model transfer
    builders; ETH is mostly a value-transfer of the existing signing path).
 
-2. **TRX liquidity.** `_liquidity` currently handles only BTC and ETH (TRON
-   falls through to "not implemented"). Adding it needs TRON as a swap *source*
-   — signing a TRX transfer to the inbound vault with the `+:POOL` memo — so it
-   depends on the TRX-source work under *Other known gaps* (tronpy + a TRON
-   endpoint). Pool confirmed: `TRON.TRX` is `Available` on THORChain with deep
-   liquidity (~230k RUNE as of 2026-06-28), so the source signing is the only
-   blocker.
+2. ~~**TRX liquidity.**~~ **DONE.** TRON source signing landed (native
+   `TransferContract` + memo via tronpy, keyless public node), unblocking both
+   TRX swaps-from and `add/withdraw-liquidity` on TRON. Pre-broadcast
+   `verify_tron_swap` gate checks vault/amount/memo. Pool `TRON.TRX` is
+   `Available`. Broadcast remains unproven against mainnet (no funds spent in
+   testing) — same caveat as the BTC/ETH spending paths.
 
 3. **More swap *destinations* via external `--dest` addresses.** Destination-only
    support is cheap: THORChain/Maya pay the output to any valid address on the
@@ -130,10 +129,13 @@ lowest-price routing across backends.
   types when needed.
 - **ETH gas estimation**: ETH source uses a fixed `--eth-gas` (default 60000);
   could call `eth_estimateGas` against the quote's vault/memo instead.
-- **TRX + USDT-TRON as sources**: native TRON signing via tronpy (TRX = transfer
-  to vault + memo in tx data; USDT-TRON = TRC-20 transfer to vault + memo, no
-  router on TRON). Needs a TronGrid API key — tronpy can't even build a tx
-  without a node, and the keyless endpoint 429s. ETH and USDT-ETH sources done.
+- **USDT-TRON as a source**: TRX (native) source is now done — signs a
+  TransferContract with the memo in tx data via tronpy, against the keyless
+  public node (`tron-rpc.publicnode.com`; the old "needs a TronGrid API key /
+  429s" worry was TronGrid's free tier, not this node). USDT-TRON still pending:
+  it's a TRC-20 `transfer` to the vault with the memo, no router on TRON — needs
+  a TriggerSmartContract build + its own verify gate (decode the transfer
+  calldata, bind recipient/amount, check the memo).
 - **Token balances in `balance`**: show USDT (TRC-20/ERC-20) holdings, not just
   native BTC/ETH/TRX.
 - **USDT-ETH source niceties**: `--amount max` (needs token balance), real
