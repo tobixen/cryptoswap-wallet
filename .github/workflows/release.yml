@@ -1,0 +1,22 @@
+name: release-checks
+
+# Runs on annotated version tags (v*) — the release gate. Lint + full test suite
+# including the live THORChain integration tests. Any publish job should `needs`
+# this one so a release only proceeds when these pass.
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.14"
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run pytest
+      - run: uv run pytest -m network  # live THORChain (read-only)

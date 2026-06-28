@@ -106,6 +106,21 @@ API drift and stale hard-coded asset strings. Full *broadcast* integration would
 use THORChain **stagenet** (the old testnet is deprecated) but needs stagenet
 faucet coins + testnet chain params — left as a manual exercise, not CI.
 
+## Releasing
+
+Releases are gated on lint + the **full** test suite, *including* the live
+THORChain integration tests. Git has no pre-tag hook, so enforcement is at the
+push of a `v*` tag:
+
+- **Locally** — a `pre-push` hook blocks pushing a `v*` tag unless `ruff` +
+  `pytest` + `pytest -m network` pass. Activate once per clone:
+  `git config core.hooksPath .githooks`. Bypass (discouraged): `git push --no-verify`.
+- **GitHub** — `.github/workflows/release.yml` runs the same checks on `v*` tags;
+  gate any publish job on it with `needs: checks`.
+
+Caveat: the `network` tests hit live THORChain, so a THORChain outage will block
+a release — bypass locally only if you're sure.
+
 ## Refreshing test fixtures
 
 The fixtures in `tests/` are trimmed real responses from the THORChain REST API:
