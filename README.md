@@ -90,7 +90,10 @@ remove *single-sided* liquidity on a THORChain pool: you deposit the asset
 itself with a `+:POOL` memo, and later withdraw a fraction with `-:POOL:<bps>`.
 In return you earn a share of that pool's swap fees — but you take on impermanent
 loss and exposure to the RUNE side of the pool, so it is neither a swap nor
-risk-free yield. Only BTC and ETH are wired up so far.
+risk-free yield. BTC, ETH and TRX are wired up. Note that THORChain frequently
+pauses LP deposits network-wide (`PAUSELP` in mimir); when it does, an add would
+be refunded minus gas, so `add-liquidity` checks this first and aborts rather
+than waste the round-trip fee. Withdrawals stay open so you can always exit.
 
 What works for the currencies with any support today. ✅ = working, ◑ =
 partial, blank = not yet. Currencies with **Support = none** above support no

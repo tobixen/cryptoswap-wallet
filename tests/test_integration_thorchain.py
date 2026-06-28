@@ -43,6 +43,14 @@ def test_hardcoded_usdt_assets_still_quote_live():
     assert to_eth.expected_amount_out > 0
 
 
+def test_mimir_exposes_lp_pause_toggle_live():
+    # The add-liquidity pre-flight reads PAUSELP; guard the endpoint + key.
+    with ThorchainClient() as thor:
+        mimir = thor.mimir()
+    assert "PAUSELP" in mimir
+    assert isinstance(mimir["PAUSELP"], int)
+
+
 def test_eth_usdt_source_quote_live():
     with ThorchainClient() as thor:
         quote = thor.quote_swap(ASSET["USDT-ETH"], "BTC.BTC", 5_000_000_000, BTC_DEST)

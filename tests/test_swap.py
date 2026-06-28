@@ -58,16 +58,20 @@ def make_status(chain="BTC", tradable=True):
 
 
 class FakeThor:
-    def __init__(self, quote=None, tradable=True, chain="BTC"):
+    def __init__(self, quote=None, tradable=True, chain="BTC", mimir=None):
         self._quote = quote or make_quote()
         self._tradable = tradable
         self._chain = chain
+        self._mimir = mimir or {}
 
     def inbound_addresses(self):
         return {self._chain: make_status(self._chain, self._tradable)}
 
     def quote_swap(self, *args, **kwargs):
         return self._quote
+
+    def mimir(self):
+        return self._mimir
 
 
 class FakeAdapter:
@@ -220,3 +224,38 @@ def test_prepare_liquidity_aborts_when_halted():
             amount=1,
             now=0,
         )
+
+
+def test_prepare_liquidity_add_aborts_when_lp_paused_globally():
+    # THORChain refunds LP adds while PAUSELP=1; abort before wasting gas.
+    with pytest.raises(SwapAborted, match="paused"):
+        prepare_liquidity(
+            thorchain=FakeThor(mimir={"PAUSELP": 1}),
+            adapter=FakeAdapter(),
+            memo="+:BTC.BTC",
+            amount=50000,
+            now=0,
+        )
+
+
+def test_prepare_liquidity_add_aborts_when_pool_deposit_paused():
+    with pytest.raises(SwapAborted, match="paused"):
+        prepare_liquidity(
+            thorchain=FakeThor(mimir={"PAUSELPDEPOSIT-BTC-BTC": 1}),
+            adapter=FakeAdapter(),
+            memo="+:BTC.BTC",
+            amount=50000,
+            now=0,
+        )
+
+
+def test_prepare_liquidity_withdraw_allowed_when_lp_paused():
+    # Withdrawals must still work so LPs can exit even when deposits are paused.
+    p = prepare_liquidity(
+        thorchain=FakeThor(mimir={"PAUSELP": 1}),
+        adapter=FakeAdapter(),
+        memo="-:BTC.BTC:10000",
+        amount=None,
+        now=0,
+    )
+    assert p.plan.amount == 1000

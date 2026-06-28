@@ -71,6 +71,26 @@ class ThorchainLike(Protocol):
         tolerance_bps: int = DEFAULT_TOLERANCE_BPS,
     ) -> Quote: ...
 
+    def mimir(self) -> dict: ...
+
+
+def lp_deposit_pause_reason(mimir: dict, pool: str) -> str | None:
+    """The mimir key pausing LP *deposits* for ``pool``, or None if open.
+
+    THORChain refunds add-liquidity deposits while any of these are set, so the
+    caller should abort before broadcasting. Withdrawals stay open so LPs can
+    exit. ``pool`` is e.g. ``TRON.TRX``; the per-pool key uses ``-`` for ``.``.
+    """
+    chain = pool.split(".", 1)[0]
+    for key in (
+        "PAUSELP",
+        f"PAUSELP{chain}",
+        f"PAUSELPDEPOSIT-{pool.replace('.', '-')}",
+    ):
+        if int(mimir.get(key, 0) or 0) >= 1:
+            return key
+    return None
+
 
 class SwapSource(Protocol):
     """A source-chain adapter: builds + verifies its own swap, signs, broadcasts."""
@@ -161,6 +181,16 @@ def prepare_liquidity(
         raise SwapAborted(f"{adapter.chain} is not currently tradable on THORChain")
     if not status.address:
         raise SwapAborted(f"no inbound vault address for {adapter.chain}")
+    # An add-liquidity deposit (memo "+:POOL") is refunded minus gas while LP is
+    # paused, so check the mimir toggles first. Withdrawals ("-:…") stay open.
+    if memo.startswith("+"):
+        pool = memo.split(":")[1] if ":" in memo else ""
+        reason = lp_deposit_pause_reason(thorchain.mimir(), pool)
+        if reason:
+            raise SwapAborted(
+                f"THORChain has LP deposits paused (mimir {reason}); an add would "
+                f"be observed and then refunded minus gas. Not broadcasting."
+            )
     deposit_amount = status.dust_threshold if amount is None else amount
     return adapter.build_and_verify_deposit(
         vault=status.address, memo=memo, amount=deposit_amount, now=now, **build_kwargs

@@ -181,6 +181,15 @@ class ThorchainClient(HttpClient):
         resp.raise_for_status()
         return resp.json()
 
+    def mimir(self) -> dict[str, Any]:
+        """Network config toggles (e.g. ``PAUSELP``); values are ints."""
+        resp = self._get(
+            f"{self.base_url}/{self.path_prefix}/mimir",
+            headers=self._headers,
+        )
+        resp.raise_for_status()
+        return resp.json()
+
     def quote_swap(
         self,
         from_asset: str,
