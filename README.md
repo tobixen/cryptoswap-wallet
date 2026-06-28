@@ -14,7 +14,7 @@ Working (dry-run by default; `--confirm` to broadcast):
 - [x] Chain adapters: BTC (bitcoinlib), ETH (eth-account), TRON (addr + balance) — `cryptoswap.chains`
 - [x] Swap orchestrator + gap-limit BTC scanning — `cryptoswap.swap`, `cryptoswap.chains.scan`
 - [x] Registry-based multi-chain `balance`; `--amount max` sweep (BTC and ETH)
-- [x] CLI: `init`, `add-hd`, `add-raw`, `list`, `show-seed`, `address`, `balance`, `quote`, `swap`, `status`
+- [x] CLI: `init`, `add-hd`, `add-raw`, `list`, `show-seed`, `address`, `balance`, `quote`, `swap`, `status`, `add-liquidity`, `withdraw-liquidity`
 
 **Swap routes** (source → destination)
 
@@ -58,7 +58,7 @@ Status: ✅ done · ◑ destination only · ☐ planned. Listed in recommended o
 | 11 | **DOGE** | Dogecoin | UTXO | ☐ | UTXO family |
 | 12 | **BCH** | Bitcoin Cash | UTXO | ☐ | UTXO family |
 | 13 | **RUNE** | THORChain native | Cosmos/THOR | ☐ | dest = `thor1…`; source = `MsgDeposit`; gateway to LP |
-| 14 | **(LP)** | liquidity provision | — | ☐ | `+:POOL` / `-:POOL:bps` memos; experimental, tuition-not-yield |
+| 14 | **(LP)** | liquidity provision | — | ◑ | `add-liquidity`/`withdraw-liquidity` done for BTC & ETH (single-sided, experimental); tokens/TRON pending |
 | 15 | **ATOM** | Cosmos Hub (GAIA) | Cosmos | ☐ | new adapter (cosmpy) |
 | 16 | **XRP** | XRP Ledger | XRP | ☐ | new adapter (xrpl-py) |
 | 17 | **SOL** | Solana | Solana | ☐ | new adapter (ed25519 / solders); THORChain-supported |
