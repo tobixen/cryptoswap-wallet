@@ -39,6 +39,8 @@ class ChainStatus:
     halted: bool
     global_trading_paused: bool
     chain_trading_paused: bool
+    address: str = ""  # inbound vault address (for non-quoted deposits, e.g. LP)
+    router: str | None = None  # EVM router contract, when present
 
     @property
     def tradable(self) -> bool:
@@ -104,6 +106,8 @@ def parse_inbound_addresses(payload: list[dict[str, Any]]) -> dict[str, ChainSta
             halted=bool(entry.get("halted", False)),
             global_trading_paused=bool(entry.get("global_trading_paused", False)),
             chain_trading_paused=bool(entry.get("chain_trading_paused", False)),
+            address=entry.get("address", ""),
+            router=entry.get("router"),
         )
     return chains
 

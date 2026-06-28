@@ -69,6 +69,28 @@ def test_balance_eth_rpc_flag_parses():
     assert args.eth_rpc == "https://x.example"
 
 
+def test_add_liquidity_parses():
+    args = build_parser().parse_args(
+        ["add-liquidity", "--asset", "BTC", "--amount", "0.001"]
+    )
+    assert args.command == "add-liquidity"
+    assert args.asset == "BTC"
+    assert args.amount == 0.001
+
+
+def test_withdraw_liquidity_parses():
+    args = build_parser().parse_args(
+        ["withdraw-liquidity", "--asset", "ETH", "--bps", "5000"]
+    )
+    assert args.command == "withdraw-liquidity"
+    assert args.bps == 5000
+
+
+def test_withdraw_liquidity_defaults_to_full():
+    args = build_parser().parse_args(["withdraw-liquidity", "--asset", "BTC"])
+    assert args.bps == 10000
+
+
 def test_status_takes_txid():
     args = build_parser().parse_args(["status", "ABC123"])
     assert args.txid == "ABC123"

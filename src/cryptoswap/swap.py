@@ -33,7 +33,7 @@ class SwapRequest:
 
 @dataclasses.dataclass(frozen=True)
 class Prepared:
-    quote: Quote
+    quote: Quote | None  # None for liquidity deposits (no swap quote)
     built: object  # chain-specific built tx (BuiltSwap / EthBuiltSwap)
     plan: object  # chain-specific verify plan (SwapPlan / EthSwapPlan)
     problems: list[str]
@@ -72,6 +72,12 @@ class SwapSource(Protocol):
     def build_and_verify(
         self, *, quote: Quote, request: SwapRequest, now: int, **kwargs: object
     ) -> Prepared: ...
+
+    def build_and_verify_deposit(
+        self, *, vault: str, memo: str, amount: int, now: int, **kwargs: object
+    ) -> Prepared:
+        """Build + verify a non-quoted deposit to ``vault`` carrying ``memo``."""
+        ...
 
     def sign(self, built: object) -> list[str]:
         """Sign the built swap; returns raw txs in broadcast order (1 or more)."""
@@ -117,6 +123,31 @@ def prepare_swap(
 
     return adapter.build_and_verify(
         quote=quote, request=request, now=now, **build_kwargs
+    )
+
+
+def prepare_liquidity(
+    *,
+    thorchain: ThorchainLike,
+    adapter: SwapSource,
+    memo: str,
+    amount: int | None,
+    now: int,
+    **build_kwargs: object,
+) -> Prepared:
+    """Prepare an (experimental) liquidity add/withdraw deposit to the vault.
+
+    ``amount`` of ``None`` means "use the chain's dust threshold" (for withdraws,
+    where the deposit is just a trigger).
+    """
+    status = thorchain.inbound_addresses().get(adapter.chain)
+    if status is None or not status.tradable:
+        raise SwapAborted(f"{adapter.chain} is not currently tradable on THORChain")
+    if not status.address:
+        raise SwapAborted(f"no inbound vault address for {adapter.chain}")
+    deposit_amount = status.dust_threshold if amount is None else amount
+    return adapter.build_and_verify_deposit(
+        vault=status.address, memo=memo, amount=deposit_amount, now=now, **build_kwargs
     )
 
 

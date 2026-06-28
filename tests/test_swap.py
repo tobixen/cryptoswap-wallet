@@ -14,6 +14,7 @@ from cryptoswap.swap import (
     SwapAborted,
     SwapRequest,
     execute_swap,
+    prepare_liquidity,
     prepare_swap,
 )
 from cryptoswap.thorchain import ChainStatus, Quote, SwapFees
@@ -52,6 +53,7 @@ def make_status(chain="BTC", tradable=True):
         halted=not tradable,
         global_trading_paused=False,
         chain_trading_paused=False,
+        address=VAULT,
     )
 
 
@@ -82,6 +84,17 @@ class FakeAdapter:
         built = SimpleNamespace(fee=400)
         return Prepared(
             quote=quote, built=built, plan=plan, problems=list(self._problems)
+        )
+
+    def build_and_verify_deposit(self, *, vault, memo, amount, now, **kwargs):
+        plan = SimpleNamespace(
+            expiry=now + 3600, inbound_address=vault, amount=amount, memo=memo
+        )
+        return Prepared(
+            quote=None,
+            built=SimpleNamespace(fee=400),
+            plan=plan,
+            problems=list(self._problems),
         )
 
     def sign(self, built):
@@ -167,3 +180,43 @@ def test_execute_blocks_unsafe_transaction():
     with pytest.raises(SwapAborted):
         execute_swap(prepare(adapter=adapter), adapter, confirm=True)
     assert adapter.broadcasted is False
+
+
+# --- liquidity ---
+
+
+def test_prepare_liquidity_uses_vault_and_memo():
+    p = prepare_liquidity(
+        thorchain=FakeThor(),
+        adapter=FakeAdapter(),
+        memo="+:BTC.BTC",
+        amount=50000,
+        now=0,
+    )
+    assert p.safe
+    assert p.quote is None
+    assert p.plan.inbound_address == VAULT
+    assert p.plan.memo == "+:BTC.BTC"
+    assert p.plan.amount == 50000
+
+
+def test_prepare_liquidity_defaults_to_dust_when_amount_none():
+    p = prepare_liquidity(
+        thorchain=FakeThor(),
+        adapter=FakeAdapter(),
+        memo="-:BTC.BTC:10000",
+        amount=None,
+        now=0,
+    )
+    assert p.plan.amount == 1000  # dust_threshold from make_status
+
+
+def test_prepare_liquidity_aborts_when_halted():
+    with pytest.raises(SwapAborted):
+        prepare_liquidity(
+            thorchain=FakeThor(tradable=False),
+            adapter=FakeAdapter(),
+            memo="+:BTC.BTC",
+            amount=1,
+            now=0,
+        )

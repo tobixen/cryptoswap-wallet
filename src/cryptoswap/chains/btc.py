@@ -202,6 +202,42 @@ class BtcAdapter(HttpClient):
         )
         return Prepared(quote=quote, built=built, plan=plan, problems=problems)
 
+    def build_and_verify_deposit(
+        self,
+        *,
+        vault: str,
+        memo: str,
+        amount: int,
+        now: int,
+        mnemonic: str,
+        scanned_utxos: list[Utxo],
+        fee_rate: float,
+        change_address: str,
+        max_fee: int,
+    ) -> Prepared:
+        built = self.build_unsigned_swap(
+            mnemonic=mnemonic,
+            utxos=scanned_utxos,
+            vault_address=vault,
+            amount=amount,
+            memo=memo,
+            fee_rate=fee_rate,
+            change_address=change_address,
+        )
+        owned = {change_address} | {u.address for u in scanned_utxos}
+        plan = SwapPlan(
+            inbound_address=vault, amount=amount, memo=memo, expiry=now + 3600
+        )
+        problems = verify_btc_swap(
+            built.outputs,
+            fee=built.fee,
+            plan=plan,
+            owned_addresses=owned,
+            now=now,
+            max_fee=max_fee,
+        )
+        return Prepared(quote=None, built=built, plan=plan, problems=problems)
+
     # --- network via Esplora; covered by manual/integration testing, not units ---
 
     def address_info(self, address: str) -> AddressInfo:

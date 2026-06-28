@@ -431,6 +431,120 @@ def _swap_from_eth(args: argparse.Namespace) -> int:
         return _confirm_and_execute(prepared, adapter, args)
 
 
+def cmd_add_liquidity(args: argparse.Namespace) -> int:
+    from cryptoswap.liquidity import add_liquidity_memo
+
+    pool = ASSET[args.asset]
+    amount = int(round(args.amount * THORCHAIN_UNIT))
+    return _liquidity(args, memo=add_liquidity_memo(pool), amount=amount)
+
+
+def cmd_withdraw_liquidity(args: argparse.Namespace) -> int:
+    from cryptoswap.liquidity import withdraw_liquidity_memo
+
+    pool = ASSET[args.asset]
+    return _liquidity(args, memo=withdraw_liquidity_memo(pool, args.bps), amount=None)
+
+
+def _liquidity(args: argparse.Namespace, *, memo: str, amount: int | None) -> int:
+    print(
+        "EXPERIMENTAL liquidity op — not a yield strategy; expect impermanent "
+        "loss + RUNE/protocol risk to exceed fees on small sums.",
+        file=sys.stderr,
+    )
+    if "-" in ASSET[args.asset]:
+        print("liquidity for tokens is not supported yet", file=sys.stderr)
+        return 2
+    chain = ASSET[args.asset].split(".", 1)[0]
+    if chain == "BTC":
+        return _liquidity_btc(args, memo=memo, amount=amount)
+    if chain == "ETH":
+        return _liquidity_eth(args, memo=memo, amount=amount)
+    print(f"liquidity on {chain} is not implemented", file=sys.stderr)
+    return 2
+
+
+def _liquidity_btc(args: argparse.Namespace, *, memo: str, amount: int | None) -> int:
+    from cryptoswap.chains.scan import scan_account
+    from cryptoswap.swap import prepare_liquidity
+
+    mnemonic = _load_mnemonic(args)
+    with _btc_adapter(args) as adapter, ThorchainClient() as thor:
+        records = scan_account(
+            derive_address=lambda p: adapter.derive_address(mnemonic, p),
+            probe=adapter.address_info,
+            account=BTC_ACCOUNT,
+        )
+        utxos = [
+            dataclasses.replace(u, path=path)
+            for path, address, info in records
+            if info.confirmed > 0
+            for u in adapter.fetch_utxos(address)
+        ]
+        if not utxos:
+            print(
+                "no confirmed BTC (add needs funds; withdraw needs a little BTC "
+                "in-wallet for the trigger tx)",
+                file=sys.stderr,
+            )
+            return 1
+        change_address = adapter.derive_address(mnemonic, BTC_CHANGE_PATH)
+        fee_rate = adapter.fetch_fee_rate()
+        try:
+            prepared = prepare_liquidity(
+                thorchain=thor,
+                adapter=adapter,
+                memo=memo,
+                amount=amount,
+                now=int(time.time()),
+                mnemonic=mnemonic,
+                scanned_utxos=utxos,
+                fee_rate=fee_rate,
+                change_address=change_address,
+                max_fee=args.max_fee,
+            )
+        except SwapAborted as exc:
+            print(f"ABORTED: {exc}", file=sys.stderr)
+            return 1
+        vault = prepared.plan.inbound_address
+        print(f"send:    {prepared.plan.amount} sats to {vault}")
+        print(f"memo:    {memo}")
+        print(f"btc fee: {prepared.built.fee} sats @ {fee_rate} sat/vB")
+        return _confirm_and_execute(prepared, adapter, args)
+
+
+def _liquidity_eth(args: argparse.Namespace, *, memo: str, amount: int | None) -> int:
+    from cryptoswap.swap import prepare_liquidity
+
+    mnemonic = _load_mnemonic(args)
+    with _eth_adapter(args) as adapter, ThorchainClient() as thor:
+        from_address = adapter.derive_address(mnemonic)
+        nonce = adapter.get_nonce(from_address)
+        max_fee_per_gas, max_priority_fee_per_gas = adapter.fetch_fees()
+        try:
+            prepared = prepare_liquidity(
+                thorchain=thor,
+                adapter=adapter,
+                memo=memo,
+                amount=amount,
+                now=int(time.time()),
+                mnemonic=mnemonic,
+                nonce=nonce,
+                gas=args.eth_gas,
+                max_fee_per_gas=max_fee_per_gas,
+                max_priority_fee_per_gas=max_priority_fee_per_gas,
+                max_fee_wei=ETH_MAX_FEE_WEI,
+            )
+        except SwapAborted as exc:
+            print(f"ABORTED: {exc}", file=sys.stderr)
+            return 1
+        eth_amt = prepared.plan.amount_wei / 10**18
+        print(f"send:    {eth_amt:.8f} ETH to {prepared.plan.inbound_address}")
+        print(f"memo:    {memo}")
+        print(f"max fee: {prepared.built.fee / 10**18:.6f} ETH")
+        return _confirm_and_execute(prepared, adapter, args)
+
+
 def cmd_status(args: argparse.Namespace) -> int:
     with ThorchainClient() as thor:
         print(json.dumps(thor.tx_status(args.txid), indent=2))
@@ -453,6 +567,17 @@ def _add_swap_args(sub: argparse.ArgumentParser) -> None:
     )
     sub.add_argument("--dest", help="destination address (default: derived from seed)")
     sub.add_argument("--key", help="keystore HD key label (default: first)")
+
+
+def _add_broadcast_args(sub: argparse.ArgumentParser) -> None:
+    sub.add_argument("--key", help="keystore HD key label (default: first)")
+    sub.add_argument("--confirm", action="store_true", help="actually broadcast")
+    sub.add_argument(
+        "--yes", action="store_true", help="skip the interactive confirm (automation)"
+    )
+    sub.add_argument("--max-fee", type=int, default=50_000, help="max BTC fee in sats")
+    sub.add_argument("--eth-rpc", help="Ethereum JSON-RPC URL ($CRYPTOSWAP_ETH_RPC)")
+    sub.add_argument("--eth-gas", type=int, default=60000, help="ETH gas limit")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -516,6 +641,24 @@ def build_parser() -> argparse.ArgumentParser:
         "--eth-gas", type=int, default=60000, help="gas limit for ETH deposit"
     )
     s.set_defaults(func=cmd_swap)
+
+    s = sub.add_parser(
+        "add-liquidity", help="EXPERIMENTAL: add single-sided liquidity to a pool"
+    )
+    s.add_argument("--asset", required=True, choices=list(ASSET))
+    s.add_argument("--amount", type=float, required=True, help="amount of --asset")
+    _add_broadcast_args(s)
+    s.set_defaults(func=cmd_add_liquidity)
+
+    s = sub.add_parser(
+        "withdraw-liquidity", help="EXPERIMENTAL: withdraw liquidity from a pool"
+    )
+    s.add_argument("--asset", required=True, choices=list(ASSET))
+    s.add_argument(
+        "--bps", type=int, default=10000, help="basis points to withdraw (1..10000)"
+    )
+    _add_broadcast_args(s)
+    s.set_defaults(func=cmd_withdraw_liquidity)
 
     s = sub.add_parser("status", help="track a swap by inbound txid")
     s.add_argument("txid")

@@ -393,3 +393,46 @@ class EthAdapter(HttpClient):
             max_fee_wei=max_fee_wei,
         )
         return Prepared(quote=quote, built=built, plan=plan, problems=problems)
+
+    def build_and_verify_deposit(
+        self,
+        *,
+        vault: str,
+        memo: str,
+        amount: int,
+        now: int,
+        mnemonic: str,
+        nonce: int,
+        gas: int,
+        max_fee_per_gas: int,
+        max_priority_fee_per_gas: int,
+        max_fee_wei: int,
+    ) -> Prepared:
+        built = self.build_unsigned_swap(
+            mnemonic=mnemonic,
+            vault_address=vault,
+            amount=amount,
+            memo=memo,
+            nonce=nonce,
+            gas=gas,
+            max_fee_per_gas=max_fee_per_gas,
+            max_priority_fee_per_gas=max_priority_fee_per_gas,
+        )
+        plan = EthSwapPlan(
+            inbound_address=vault,
+            amount_wei=amount * WEI_PER_THORCHAIN_UNIT,
+            memo=memo,
+            expiry=now + 3600,
+        )
+        problems = verify_eth_swap(
+            to=built.to,
+            value=built.value,
+            data=built.data,
+            chain_id=built.chain_id,
+            gas=built.gas,
+            max_fee_per_gas=built.max_fee_per_gas,
+            plan=plan,
+            now=now,
+            max_fee_wei=max_fee_wei,
+        )
+        return Prepared(quote=None, built=built, plan=plan, problems=problems)
