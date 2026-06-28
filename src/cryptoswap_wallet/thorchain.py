@@ -93,6 +93,20 @@ def _int(value: str | int) -> int:
     return int(value)
 
 
+def normalize_txid(txid: str) -> str:
+    """Normalise a user-supplied txid to the form thornode/mayanode index by.
+
+    EVM tx hashes are quoted with a ``0x`` prefix by explorers, wallets and our
+    own broadcast output, but THORChain/Maya store and look up observed inbound
+    hashes *without* it. ``tx/status`` answers an unknown hash with an empty
+    "never observed" body (not a 404), so passing the prefix verbatim makes an
+    already-confirmed inbound look perpetually stuck. UTXO/Cosmos txids carry no
+    ``0x`` prefix, so stripping it is a no-op for them (and the endpoint
+    uppercases the hex itself, so case needs no handling here).
+    """
+    return txid.removeprefix("0x").removeprefix("0X")
+
+
 def parse_inbound_addresses(payload: list[dict[str, Any]]) -> dict[str, ChainStatus]:
     """Parse the ``/thorchain/inbound_addresses`` array, keyed by chain."""
     chains: dict[str, ChainStatus] = {}
@@ -175,7 +189,7 @@ class ThorchainClient(HttpClient):
 
     def tx_status(self, txid: str) -> dict[str, Any]:
         resp = self._get(
-            f"{self.base_url}/{self.path_prefix}/tx/status/{txid}",
+            f"{self.base_url}/{self.path_prefix}/tx/status/{normalize_txid(txid)}",
             headers=self._headers,
         )
         resp.raise_for_status()

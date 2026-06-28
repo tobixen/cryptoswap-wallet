@@ -6,7 +6,9 @@ Fixtures are trimmed real responses captured from the live API; see README.
 import pytest
 
 from cryptoswap_wallet.thorchain import (
+    ThorchainClient,
     ThorchainError,
+    normalize_txid,
     parse_inbound_addresses,
     parse_quote,
 )
@@ -127,3 +129,43 @@ def test_parse_inbound_addresses():
     assert chains["BTC"].outbound_fee == 1058
     assert chains["BTC"].tradable is True
     assert chains["TRON"].tradable is False  # halted
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        # EVM hashes are quoted 0x-prefixed (explorers, our broadcast output),
+        # but thornode/mayanode index them without the prefix.
+        ("0x3a8927cc190f91d9", "3a8927cc190f91d9"),
+        ("0X3A8927CC190F91D9", "3A8927CC190F91D9"),
+        # already in the indexed form -> untouched.
+        ("3a8927cc190f91d9", "3a8927cc190f91d9"),
+        # UTXO/Cosmos txids have no 0x prefix -> no-op (no regression).
+        ("ABCDEF0123456789CABBAGE", "ABCDEF0123456789CABBAGE"),
+    ],
+)
+def test_normalize_txid_strips_evm_prefix(raw, expected):
+    assert normalize_txid(raw) == expected
+
+
+def test_tx_status_queries_without_0x_prefix(monkeypatch):
+    """Regression: a 0x-prefixed hash must not be sent verbatim, or Maya/THOR
+    return an empty 'never observed' status for an already-confirmed inbound."""
+    client = ThorchainClient("https://node.example", path_prefix="mayachain")
+    captured: dict[str, str] = {}
+
+    class _Resp:
+        def raise_for_status(self) -> None: ...
+
+        def json(self) -> dict[str, object]:
+            return {"ok": True}
+
+    def fake_get(url: str, **_kw: object) -> _Resp:
+        captured["url"] = url
+        return _Resp()
+
+    monkeypatch.setattr(client, "_get", fake_get)
+    client.tx_status("0x3a8927cc190f91d9")
+    assert (
+        captured["url"] == "https://node.example/mayachain/tx/status/3a8927cc190f91d9"
+    )

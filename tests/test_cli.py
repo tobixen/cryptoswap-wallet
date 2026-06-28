@@ -137,6 +137,16 @@ def test_status_takes_txid():
     assert args.txid == "ABC123"
 
 
+def test_status_backend_defaults_to_auto():
+    args = build_parser().parse_args(["status", "ABC123"])
+    assert args.backend == "auto"
+
+
+def test_status_backend_maya_parses():
+    args = build_parser().parse_args(["status", "ABC123", "--backend", "maya"])
+    assert args.backend == "maya"
+
+
 def test_send_parses_recipient_and_amount():
     from cryptoswap_wallet.cli import cmd_send
 

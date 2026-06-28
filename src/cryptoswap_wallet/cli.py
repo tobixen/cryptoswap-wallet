@@ -29,7 +29,7 @@ from cryptoswap_wallet.swap import (
     execute_swap,
     prepare_swap,
 )
-from cryptoswap_wallet.thorchain import THORCHAIN_UNIT, ThorchainClient
+from cryptoswap_wallet.thorchain import THORCHAIN_UNIT
 
 try:
     from cryptoswap_wallet._version import __version__
@@ -833,8 +833,29 @@ def _liquidity_tron(
 
 
 def cmd_status(args: argparse.Namespace) -> int:
-    with ThorchainClient() as thor:
-        print(json.dumps(thor.tx_status(args.txid), indent=2))
+    # A bare tx hash doesn't say which network observed it, and an inbound only
+    # exists on the chain it was deposited to (a Maya LP is invisible to
+    # thornode). With --backend auto we query every backend and report the one
+    # that actually observed it; an unknown hash just yields a "not observed"
+    # body on each, so falling through to the last is harmless.
+    from cryptoswap_wallet.net import HTTP_ERRORS
+
+    backends = _backends_for(args)
+    status: dict[str, object] = {}
+    for backend in backends:
+        try:
+            with backend.client as thor:
+                status = thor.tx_status(args.txid)
+        except HTTP_ERRORS:
+            continue
+        observed = status.get("stages", {}).get("inbound_observed", {}).get("started")
+        if observed or len(backends) == 1:
+            if len(backends) > 1:
+                print(f"// observed on {backend.name}", file=sys.stderr)
+            print(json.dumps(status, indent=2))
+            return 0
+    # Not observed on any backend yet (genuinely pending, or unknown hash).
+    print(json.dumps(status, indent=2))
     return 0
 
 
@@ -1011,6 +1032,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     s = sub.add_parser("status", help="track a swap by inbound txid")
     s.add_argument("txid")
+    s.add_argument(
+        "--backend",
+        choices=["thorchain", "maya", "auto"],
+        default="auto",
+        help="network to query (auto = try all, report where observed)",
+    )
     s.set_defaults(func=cmd_status)
 
     return parser
