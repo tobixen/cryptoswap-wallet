@@ -36,6 +36,6 @@ class EthAdapter:
 
     def derive_address(self, mnemonic: str, path: str = DEFAULT_ETH_DERIVATION) -> str:
         seed = Mnemonic().to_seed(mnemonic)
-        key = HDKey.from_seed(seed).subkey_for_path(path)
+        key = HDKey.from_seed(seed).key_for_path(path)
         pubkey = key.public_uncompressed_byte  # 0x04 || X(32) || Y(32)
         return to_checksum_address(_keccak256(pubkey[1:])[-20:])

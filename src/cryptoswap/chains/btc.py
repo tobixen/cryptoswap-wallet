@@ -74,7 +74,7 @@ class BtcAdapter:
 
     def _hdkey(self, mnemonic: str, path: str) -> HDKey:
         seed = Mnemonic().to_seed(mnemonic)
-        return HDKey.from_seed(seed, network="bitcoin").subkey_for_path(path)
+        return HDKey.from_seed(seed, network="bitcoin").key_for_path(path)
 
     def derive_address(self, mnemonic: str, path: str = DEFAULT_DERIVATION) -> str:
         return self._hdkey(mnemonic, path).address(
