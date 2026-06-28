@@ -11,6 +11,7 @@ invocations (and argument-parsing tests) stay light.
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import getpass
 import json
 import os
@@ -46,6 +47,13 @@ def _passphrase(*, confirm: bool = False) -> str:
     if confirm and getpass.getpass("Repeat passphrase: ") != pw:
         raise SystemExit("passphrases do not match")
     return pw
+
+
+def _btc_adapter(args: argparse.Namespace):  # noqa: ANN202 (BtcAdapter, lazy import)
+    from cryptoswap.chains.btc import DEFAULT_ESPLORA, BtcAdapter
+
+    url = args.esplora or os.environ.get("CRYPTOSWAP_ESPLORA") or DEFAULT_ESPLORA
+    return BtcAdapter(url)
 
 
 def _load_mnemonic(args: argparse.Namespace) -> str:
@@ -137,20 +145,24 @@ def cmd_address(args: argparse.Namespace) -> int:
 
 
 def cmd_balance(args: argparse.Namespace) -> int:
-    from cryptoswap.chains.btc import BtcAdapter
     from cryptoswap.chains.scan import scan_account
 
     mnemonic = _load_mnemonic(args)
-    adapter = BtcAdapter()
-    utxos = scan_account(
-        derive_address=lambda p: adapter.derive_address(mnemonic, p),
-        has_history=adapter.address_has_history,
-        fetch_utxos=adapter.fetch_utxos,
-        account=BTC_ACCOUNT,
+    with _btc_adapter(args) as adapter:
+        records = scan_account(
+            derive_address=lambda p: adapter.derive_address(mnemonic, p),
+            probe=adapter.address_info,
+            account=BTC_ACCOUNT,
+        )
+    confirmed = sum(info.confirmed for _, _, info in records)
+    pending = sum(info.pending for _, _, info in records)
+    print(
+        f"BTC confirmed: {confirmed} sats = {confirmed / THORCHAIN_UNIT:.8f} BTC "
+        f"({len(records)} used addresses)"
     )
-    total = sum(u.value for u in utxos)
-    btc = total / THORCHAIN_UNIT
-    print(f"BTC: {total} sats = {btc:.8f} BTC ({len(utxos)} utxos)")
+    if pending:
+        pbtc = pending / THORCHAIN_UNIT
+        print(f"BTC pending: {pending} sats = {pbtc:.8f} BTC (mempool)")
     return 0
 
 
@@ -186,7 +198,6 @@ def cmd_swap(args: argparse.Namespace) -> int:
         print("only BTC is implemented as a swap source", file=sys.stderr)
         return 2
 
-    from cryptoswap.chains.btc import BtcAdapter
     from cryptoswap.chains.scan import scan_account
 
     mnemonic = _load_mnemonic(args)
@@ -195,27 +206,31 @@ def cmd_swap(args: argparse.Namespace) -> int:
         print("a --dest address is required for this destination", file=sys.stderr)
         return 2
 
-    adapter = BtcAdapter()
     amount = int(round(args.amount * THORCHAIN_UNIT))
-    utxos = scan_account(
-        derive_address=lambda p: adapter.derive_address(mnemonic, p),
-        has_history=adapter.address_has_history,
-        fetch_utxos=adapter.fetch_utxos,
-        account=BTC_ACCOUNT,
-    )
-    if not utxos:
-        print("no UTXOs found for this wallet", file=sys.stderr)
-        return 1
+    with _btc_adapter(args) as adapter, ThorchainClient() as thor:
+        records = scan_account(
+            derive_address=lambda p: adapter.derive_address(mnemonic, p),
+            probe=adapter.address_info,
+            account=BTC_ACCOUNT,
+        )
+        utxos = [
+            dataclasses.replace(u, path=path)
+            for path, address, info in records
+            if info.confirmed > 0
+            for u in adapter.fetch_utxos(address)
+        ]
+        if not utxos:
+            print("no confirmed UTXOs found for this wallet", file=sys.stderr)
+            return 1
 
-    change_address = adapter.derive_address(mnemonic, BTC_CHANGE_PATH)
-    fee_rate = adapter.fetch_fee_rate()
-    request = SwapRequest(
-        from_asset="BTC.BTC",
-        to_asset=ASSET[args.to_],
-        amount=amount,
-        destination=dest,
-    )
-    with ThorchainClient() as thor:
+        change_address = adapter.derive_address(mnemonic, BTC_CHANGE_PATH)
+        fee_rate = adapter.fetch_fee_rate()
+        request = SwapRequest(
+            from_asset="BTC.BTC",
+            to_asset=ASSET[args.to_],
+            amount=amount,
+            destination=dest,
+        )
         try:
             prepared = prepare_btc_swap(
                 thorchain=thor,
@@ -280,6 +295,7 @@ def build_parser() -> argparse.ArgumentParser:
         prog="cryptoswap", description="CLI multi-currency wallet with THORChain swaps"
     )
     parser.add_argument("--keystore", help="keystore path ($CRYPTOSWAP_KEYSTORE)")
+    parser.add_argument("--esplora", help="Esplora API base URL ($CRYPTOSWAP_ESPLORA)")
     sub = parser.add_subparsers(dest="command")
 
     s = sub.add_parser("init", help="create an empty encrypted keystore")

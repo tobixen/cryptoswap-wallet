@@ -83,3 +83,39 @@ def test_generate_mnemonic_is_usable():
     assert len(mnemonic.split()) == 12
     addr = BtcAdapter().derive_address(mnemonic, PATH)
     assert addr.startswith("bc1q")
+
+
+def test_parse_address_info_confirmed_and_pending():
+    from cryptoswap.chains.btc import parse_address_info
+
+    info = parse_address_info(
+        {
+            "chain_stats": {
+                "funded_txo_sum": 5000,
+                "spent_txo_sum": 1000,
+                "tx_count": 2,
+            },
+            "mempool_stats": {
+                "funded_txo_sum": 3000,
+                "spent_txo_sum": 0,
+                "tx_count": 1,
+            },
+        }
+    )
+    assert info.confirmed == 4000
+    assert info.pending == 3000
+    assert info.has_history is True
+
+
+def test_parse_address_info_unused():
+    from cryptoswap.chains.btc import parse_address_info
+
+    info = parse_address_info(
+        {
+            "chain_stats": {"funded_txo_sum": 0, "spent_txo_sum": 0, "tx_count": 0},
+            "mempool_stats": {"funded_txo_sum": 0, "spent_txo_sum": 0, "tx_count": 0},
+        }
+    )
+    assert info.has_history is False
+    assert info.confirmed == 0
+    assert info.pending == 0

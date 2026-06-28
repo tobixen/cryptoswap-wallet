@@ -35,6 +35,24 @@ def generate_mnemonic(strength: int = 128) -> str:
     return Mnemonic().generate(strength)
 
 
+@dataclasses.dataclass(frozen=True)
+class AddressInfo:
+    """Summary of an address from a single Esplora ``/address`` call."""
+
+    has_history: bool
+    confirmed: int  # sats, confirmed balance
+    pending: int  # sats, net mempool delta (negative when spending)
+
+
+def parse_address_info(stats: dict) -> AddressInfo:
+    chain = stats.get("chain_stats", {})
+    mem = stats.get("mempool_stats", {})
+    confirmed = chain.get("funded_txo_sum", 0) - chain.get("spent_txo_sum", 0)
+    pending = mem.get("funded_txo_sum", 0) - mem.get("spent_txo_sum", 0)
+    has_history = chain.get("tx_count", 0) > 0 or mem.get("tx_count", 0) > 0
+    return AddressInfo(has_history=has_history, confirmed=confirmed, pending=pending)
+
+
 @dataclasses.dataclass
 class BuiltSwap:
     tx: Transaction
@@ -71,6 +89,26 @@ class BtcAdapter:
     ) -> None:
         self.esplora_url = esplora_url.rstrip("/")
         self._timeout = timeout
+        self._client: httpx.Client | None = None
+
+    @property
+    def _http(self) -> httpx.Client:
+        # One pooled, thread-safe client reused across the (concurrent) scan;
+        # a fresh connection per address made balance scans take ~40s.
+        if self._client is None:
+            self._client = httpx.Client(timeout=self._timeout)
+        return self._client
+
+    def close(self) -> None:
+        if self._client is not None:
+            self._client.close()
+            self._client = None
+
+    def __enter__(self) -> BtcAdapter:
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self.close()
 
     def _hdkey(self, mnemonic: str, path: str) -> HDKey:
         seed = Mnemonic().to_seed(mnemonic)
@@ -130,38 +168,31 @@ class BtcAdapter:
 
     # --- network via Esplora; covered by manual/integration testing, not units ---
 
+    def address_info(self, address: str) -> AddressInfo:
+        """History + confirmed/pending balance from a single /address call."""
+        resp = self._http.get(f"{self.esplora_url}/address/{address}")
+        resp.raise_for_status()
+        return parse_address_info(resp.json())
+
     def fetch_utxos(self, address: str) -> list[Utxo]:
-        with httpx.Client(timeout=self._timeout) as client:
-            resp = client.get(f"{self.esplora_url}/address/{address}/utxo")
-            resp.raise_for_status()
-            return [
-                Utxo(txid=x["txid"], vout=x["vout"], value=x["value"], address=address)
-                for x in resp.json()
-                if x.get("status", {}).get("confirmed", True)
-            ]
+        resp = self._http.get(f"{self.esplora_url}/address/{address}/utxo")
+        resp.raise_for_status()
+        return [
+            Utxo(txid=x["txid"], vout=x["vout"], value=x["value"], address=address)
+            for x in resp.json()
+            if x.get("status", {}).get("confirmed", True)
+        ]
 
     def fetch_balance(self, address: str) -> int:
-        return sum(u.value for u in self.fetch_utxos(address))
-
-    def address_has_history(self, address: str) -> bool:
-        with httpx.Client(timeout=self._timeout) as client:
-            resp = client.get(f"{self.esplora_url}/address/{address}")
-            resp.raise_for_status()
-            stats = resp.json()
-            return (
-                stats.get("chain_stats", {}).get("tx_count", 0) > 0
-                or stats.get("mempool_stats", {}).get("tx_count", 0) > 0
-            )
+        return self.address_info(address).confirmed
 
     def fetch_fee_rate(self, target_blocks: int = 6) -> float:
-        with httpx.Client(timeout=self._timeout) as client:
-            resp = client.get(f"{self.esplora_url}/fee-estimates")
-            resp.raise_for_status()
-            estimates = resp.json()
-            return float(estimates.get(str(target_blocks)) or min(estimates.values()))
+        resp = self._http.get(f"{self.esplora_url}/fee-estimates")
+        resp.raise_for_status()
+        estimates = resp.json()
+        return float(estimates.get(str(target_blocks)) or min(estimates.values()))
 
     def broadcast(self, raw_hex: str) -> str:
-        with httpx.Client(timeout=self._timeout) as client:
-            resp = client.post(f"{self.esplora_url}/tx", content=raw_hex)
-            resp.raise_for_status()
-            return resp.text.strip()
+        resp = self._http.post(f"{self.esplora_url}/tx", content=raw_hex)
+        resp.raise_for_status()
+        return resp.text.strip()
