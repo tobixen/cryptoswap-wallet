@@ -169,6 +169,11 @@ class ThorchainClient:
         resp.raise_for_status()
         return parse_inbound_addresses(resp.json())
 
+    def tx_status(self, txid: str) -> dict[str, Any]:
+        resp = self._http.get(f"/thorchain/tx/status/{txid}")
+        resp.raise_for_status()
+        return resp.json()
+
     def quote_swap(
         self,
         from_asset: str,

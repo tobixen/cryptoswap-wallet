@@ -9,6 +9,9 @@ description = "CLI multi-currency wallet with non-custodial swaps via THORChain"
 requires-python = ">=3.12"
 dependencies = ["httpx>=0.27", "cryptography>=43"]
 
+[project.scripts]
+cryptoswap = "cryptoswap.cli:main"
+
 # Bitcoin support lives behind an extra. bitcoinlib is a pure-ish Python wallet
 # library (HD, UTXO services, coin selection, tx + OP_RETURN, signing,
 # broadcast) that installs on 3.14; compiled BDK does not.
