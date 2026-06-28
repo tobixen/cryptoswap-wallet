@@ -74,18 +74,33 @@ sources are code-ready but need a working endpoint. See `docs/TODO.md` for detai
 
 ### Per-feature support
 
-What works for the currencies with any support today. ✅ = working, ◑ = partial,
-blank = not yet. Currencies with **Support = none** above support no features yet.
-`send` (to an external address) is planned for all and so is omitted as it would
-be entirely blank.
+Features:
 
-| Currency | Hold | Show balance | Swap to | Swap from | Liquidity |
-|---|:--:|:--:|:--:|:--:|:--:|
-| BTC | ✅ | ✅ | ✅ | ✅ | ✅ |
-| ETH | ✅ | ✅ | ✅ | ✅ | ✅ |
-| USDT-ETH | ✅ | | ✅ | ✅ | |
-| TRX | ✅ | ✅ | ✅ | ◑ | |
-| USDT-TRON | ✅ | | ✅ | | |
+* **Hold** — derive an address, hold a balance, receive funds
+* **Bal**  — show the balance
+* **To**   — use as a swap *destination* (funds land here)
+* **From** — use as a swap *source* (the asset you spend)
+* **Liq**  — provide liquidity (see below)
+
+**Liquidity (experimental).** `add-liquidity` / `withdraw-liquidity` add or
+remove *single-sided* liquidity on a THORChain pool: you deposit the asset
+itself with a `+:POOL` memo, and later withdraw a fraction with `-:POOL:<bps>`.
+In return you earn a share of that pool's swap fees — but you take on impermanent
+loss and exposure to the RUNE side of the pool, so it is neither a swap nor
+risk-free yield. Only BTC and ETH are wired up so far.
+
+What works for the currencies with any support today. ✅ = working, ◑ =
+partial, blank = not yet. Currencies with **Support = none** above support no
+features yet. `send` (to an external address) is planned for all and so is
+omitted as it would be an entirely blank column.
+
+| Currency  | Hold | Bal | To  | From | Liq |
+|-----------|:----:|:---:|:---:|:----:|:---:|
+| BTC       |  ✅  |  ✅ |  ✅ |  ✅  |  ✅ |
+| ETH       |  ✅  |  ✅ |  ✅ |  ✅  |  ✅ |
+| USDT-ETH  |  ✅  |     |  ✅ |  ✅  |     |
+| TRX       |  ✅  |  ✅ |  ✅ |  ◑   |     |
+| USDT-TRON |  ✅  |     |  ✅ |      |     |
 
 ## Usage
 
