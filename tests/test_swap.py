@@ -9,7 +9,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from cryptoswap.swap import (
+from cryptoswap_wallet.swap import (
     Prepared,
     SwapAborted,
     SwapRequest,
@@ -17,7 +17,7 @@ from cryptoswap.swap import (
     prepare_liquidity,
     prepare_swap,
 )
-from cryptoswap.thorchain import ChainStatus, Quote, SwapFees
+from cryptoswap_wallet.thorchain import ChainStatus, Quote, SwapFees
 
 VAULT = "bc1qvault"
 

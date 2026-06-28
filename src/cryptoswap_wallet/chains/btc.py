@@ -1,7 +1,7 @@
 """Bitcoin chain adapter, backed by bitcoinlib for HD keys, signing and OP_RETURN.
 
 Building a swap is deliberately split from signing: ``build_unsigned_swap``
-returns the tx together with neutral outputs for the :mod:`cryptoswap.verify`
+returns the tx together with neutral outputs for the :mod:`cryptoswap_wallet.verify`
 gate, and only after that gate passes should the caller ``sign`` and
 ``broadcast``. UTXO sync and broadcast use a public Esplora API (no node).
 
@@ -17,18 +17,18 @@ from bitcoinlib.keys import HDKey
 from bitcoinlib.mnemonic import Mnemonic
 from bitcoinlib.transactions import Transaction
 
-from cryptoswap.chains.base import BalanceReport
-from cryptoswap.chains.coins import (
+from cryptoswap_wallet.chains.base import BalanceReport
+from cryptoswap_wallet.chains.coins import (
     InsufficientFunds,
     Utxo,
     decode_op_return,
     encode_op_return,
     select_coins,
 )
-from cryptoswap.net import HttpClient
-from cryptoswap.swap import Prepared, SwapRequest
-from cryptoswap.thorchain import Quote
-from cryptoswap.verify import SwapPlan, TxOutput, verify_btc_swap
+from cryptoswap_wallet.net import HttpClient
+from cryptoswap_wallet.swap import Prepared, SwapRequest
+from cryptoswap_wallet.thorchain import Quote
+from cryptoswap_wallet.verify import SwapPlan, TxOutput, verify_btc_swap
 
 DEFAULT_ESPLORA = "https://blockstream.info/api"
 DEFAULT_DERIVATION = "m/84'/0'/0'/0/0"
@@ -260,7 +260,7 @@ class BtcAdapter(HttpClient):
         return self.address_info(address).confirmed
 
     def wallet_balance(self, mnemonic: str, account: str = ACCOUNT) -> BalanceReport:
-        from cryptoswap.chains.scan import scan_account
+        from cryptoswap_wallet.chains.scan import scan_account
 
         records = scan_account(
             derive_address=lambda p: self.derive_address(mnemonic, p),

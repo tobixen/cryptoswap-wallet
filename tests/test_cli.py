@@ -2,7 +2,7 @@
 
 import pytest
 
-from cryptoswap.cli import ASSET, build_parser
+from cryptoswap_wallet.cli import ASSET, build_parser
 
 
 def test_swap_defaults():
@@ -108,7 +108,7 @@ def test_resolve_destination_for_usdt_targets():
     pytest.importorskip("eth_account")
     from types import SimpleNamespace
 
-    from cryptoswap.cli import _resolve_destination
+    from cryptoswap_wallet.cli import _resolve_destination
 
     mnemonic = (
         "abandon abandon abandon abandon abandon abandon "

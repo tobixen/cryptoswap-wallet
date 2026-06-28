@@ -14,7 +14,7 @@ from __future__ import annotations
 import dataclasses
 from typing import Protocol
 
-from cryptoswap.thorchain import ChainStatus, Quote
+from cryptoswap_wallet.thorchain import ChainStatus, Quote
 
 DEFAULT_TOLERANCE_BPS = 300
 

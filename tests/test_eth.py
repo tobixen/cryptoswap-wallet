@@ -4,7 +4,7 @@ import pytest
 
 pytest.importorskip("bitcoinlib")
 
-from cryptoswap.chains.eth import EthAdapter, to_checksum_address  # noqa: E402
+from cryptoswap_wallet.chains.eth import EthAdapter, to_checksum_address  # noqa: E402
 
 MNEMONIC = (
     "abandon abandon abandon abandon abandon abandon "
@@ -58,7 +58,7 @@ def test_eth_sign_produces_typed_raw():
 
 
 def test_eth_sweep_amount_leaves_gas_reserve():
-    from cryptoswap.chains.eth import eth_sweep_amount
+    from cryptoswap_wallet.chains.eth import eth_sweep_amount
 
     amount = eth_sweep_amount(10**18, gas=60000, max_fee_per_gas=20_000_000_000)
     expected = (10**18 - 60000 * 20_000_000_000) // 10**10
@@ -68,16 +68,16 @@ def test_eth_sweep_amount_leaves_gas_reserve():
 def test_eth_sweep_amount_insufficient():
     import pytest
 
-    from cryptoswap.chains.coins import InsufficientFunds
-    from cryptoswap.chains.eth import eth_sweep_amount
+    from cryptoswap_wallet.chains.coins import InsufficientFunds
+    from cryptoswap_wallet.chains.eth import eth_sweep_amount
 
     with pytest.raises(InsufficientFunds):
         eth_sweep_amount(1000, gas=60000, max_fee_per_gas=20_000_000_000)
 
 
 def test_eth_build_and_verify_clean():
-    from cryptoswap.swap import SwapRequest
-    from cryptoswap.thorchain import Quote, SwapFees
+    from cryptoswap_wallet.swap import SwapRequest
+    from cryptoswap_wallet.thorchain import Quote, SwapFees
 
     a = EthAdapter()
     dest = "bc1qexampledest"
@@ -115,7 +115,7 @@ def test_eth_build_and_verify_clean():
 
 
 def _eth_token_quote(memo, *, expiry=9_999_999_999):
-    from cryptoswap.thorchain import Quote, SwapFees
+    from cryptoswap_wallet.thorchain import Quote, SwapFees
 
     return Quote(
         inbound_address="0xe3536ba9559966c357f551ceccccf38b533aa171",
@@ -139,7 +139,7 @@ USDT_ASSET = "ETH.USDT-0xdAC17F958D2ee523a2206206994597C13D831ec7"
 
 
 def _build_usdt(dest="bc1qexampledest", amount=500_000_000):
-    from cryptoswap.swap import SwapRequest
+    from cryptoswap_wallet.swap import SwapRequest
 
     request = SwapRequest(
         from_asset=USDT_ASSET, to_asset="BTC.BTC", amount=amount, destination=dest
@@ -166,7 +166,7 @@ def test_eth_token_build_amounts_and_nonces():
 
 
 def test_eth_token_verify_clean():
-    from cryptoswap.chains.eth import verify_eth_token_swap
+    from cryptoswap_wallet.chains.eth import verify_eth_token_swap
 
     built = _build_usdt()
     problems = verify_eth_token_swap(
@@ -176,7 +176,7 @@ def test_eth_token_verify_clean():
 
 
 def test_eth_token_verify_rejects_wrong_destination():
-    from cryptoswap.chains.eth import verify_eth_token_swap
+    from cryptoswap_wallet.chains.eth import verify_eth_token_swap
 
     built = _build_usdt()
     problems = verify_eth_token_swap(

@@ -1,6 +1,6 @@
 """Tests for the chain-agnostic BalanceReport formatting."""
 
-from cryptoswap.chains.base import BalanceReport
+from cryptoswap_wallet.chains.base import BalanceReport
 
 
 def test_format_basic_account_balance():

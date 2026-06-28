@@ -5,7 +5,7 @@ swap: wrong vault, wrong amount, wrong/garbled memo, change leaking to a
 non-owned address, an expired quote, or an absurd fee.
 """
 
-from cryptoswap.verify import (
+from cryptoswap_wallet.verify import (
     EthSwapPlan,
     SwapPlan,
     TxOutput,

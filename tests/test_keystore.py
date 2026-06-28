@@ -9,7 +9,7 @@ import json
 
 import pytest
 
-from cryptoswap.keystore import HdKey, Keystore, KeystoreError, RawKey, Secret
+from cryptoswap_wallet.keystore import HdKey, Keystore, KeystoreError, RawKey, Secret
 
 MNEMONIC = (
     "abandon abandon abandon abandon abandon abandon "

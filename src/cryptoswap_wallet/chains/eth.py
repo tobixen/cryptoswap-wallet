@@ -19,12 +19,16 @@ from eth_abi import encode as abi_encode
 from eth_account import Account
 from eth_account.signers.local import LocalAccount
 
-from cryptoswap.chains.base import BalanceReport
-from cryptoswap.chains.coins import InsufficientFunds
-from cryptoswap.net import HttpClient
-from cryptoswap.swap import Prepared, SwapRequest
-from cryptoswap.thorchain import Quote
-from cryptoswap.verify import WEI_PER_THORCHAIN_UNIT, EthSwapPlan, verify_eth_swap
+from cryptoswap_wallet.chains.base import BalanceReport
+from cryptoswap_wallet.chains.coins import InsufficientFunds
+from cryptoswap_wallet.net import HttpClient
+from cryptoswap_wallet.swap import Prepared, SwapRequest
+from cryptoswap_wallet.thorchain import Quote
+from cryptoswap_wallet.verify import (
+    WEI_PER_THORCHAIN_UNIT,
+    EthSwapPlan,
+    verify_eth_swap,
+)
 
 DEFAULT_ETH_DERIVATION = "m/44'/60'/0'/0/0"
 DEFAULT_RPC = "https://ethereum-rpc.publicnode.com"

@@ -13,8 +13,8 @@ import hashlib
 from eth_account import Account
 from eth_account.signers.local import LocalAccount
 
-from cryptoswap.chains.base import BalanceReport
-from cryptoswap.net import HttpClient
+from cryptoswap_wallet.chains.base import BalanceReport
+from cryptoswap_wallet.net import HttpClient
 
 DEFAULT_TRON_DERIVATION = "m/44'/195'/0'/0/0"
 DEFAULT_TRON_API = "https://api.trongrid.io"

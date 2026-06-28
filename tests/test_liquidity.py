@@ -2,7 +2,7 @@
 
 import pytest
 
-from cryptoswap.liquidity import add_liquidity_memo, withdraw_liquidity_memo
+from cryptoswap_wallet.liquidity import add_liquidity_memo, withdraw_liquidity_memo
 
 
 def test_add_memo():

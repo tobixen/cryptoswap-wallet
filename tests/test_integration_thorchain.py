@@ -7,8 +7,8 @@ with recorded fixtures cannot.
 
 import pytest
 
-from cryptoswap.cli import ASSET
-from cryptoswap.thorchain import ThorchainClient
+from cryptoswap_wallet.cli import ASSET
+from cryptoswap_wallet.thorchain import ThorchainClient
 
 pytestmark = pytest.mark.network
 

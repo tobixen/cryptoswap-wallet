@@ -5,7 +5,7 @@ Fixtures are trimmed real responses captured from the live API; see README.
 
 import pytest
 
-from cryptoswap.thorchain import (
+from cryptoswap_wallet.thorchain import (
     ThorchainError,
     parse_inbound_addresses,
     parse_quote,

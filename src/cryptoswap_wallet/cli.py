@@ -1,4 +1,4 @@
-"""Command-line interface for cryptoswap.
+"""Command-line interface for cryptoswap_wallet.
 
 Commands: init / add-hd / add-raw / list / address / balance / quote / swap /
 status. Swaps default to a dry run that builds + verifies + prints without
@@ -19,12 +19,17 @@ import sys
 import time
 from pathlib import Path
 
-from cryptoswap.keystore import HdKey, Keystore
-from cryptoswap.net import HTTP_ERRORS
-from cryptoswap.swap import SwapAborted, SwapRequest, execute_swap, prepare_swap
-from cryptoswap.thorchain import THORCHAIN_UNIT, ThorchainClient
+from cryptoswap_wallet.keystore import HdKey, Keystore
+from cryptoswap_wallet.net import HTTP_ERRORS
+from cryptoswap_wallet.swap import SwapAborted, SwapRequest, execute_swap, prepare_swap
+from cryptoswap_wallet.thorchain import THORCHAIN_UNIT, ThorchainClient
 
-DEFAULT_KEYSTORE = "~/.config/cryptoswap/keystore.json"
+try:
+    from cryptoswap_wallet._version import __version__
+except ImportError:  # not built yet (e.g. running from a fresh checkout)
+    __version__ = "0+unknown"
+
+DEFAULT_KEYSTORE = "~/.config/cryptoswap-wallet/keystore.json"
 BTC_ACCOUNT = "m/84'/0'/0'"
 BTC_RECEIVE_PATH = "m/84'/0'/0'/0/0"
 BTC_CHANGE_PATH = "m/84'/0'/0'/1/0"
@@ -43,12 +48,14 @@ ASSET = {
 
 def _keystore_path(args: argparse.Namespace) -> Path:
     return Path(
-        args.keystore or os.environ.get("CRYPTOSWAP_KEYSTORE") or DEFAULT_KEYSTORE
+        args.keystore
+        or os.environ.get("CRYPTOSWAP_WALLET_KEYSTORE")
+        or DEFAULT_KEYSTORE
     ).expanduser()
 
 
 def _passphrase(*, confirm: bool = False) -> str:
-    pw = os.environ.get("CRYPTOSWAP_PASSPHRASE")
+    pw = os.environ.get("CRYPTOSWAP_WALLET_PASSPHRASE")
     if pw:
         return pw
     pw = getpass.getpass("Keystore passphrase: ")
@@ -58,29 +65,29 @@ def _passphrase(*, confirm: bool = False) -> str:
 
 
 def _btc_adapter(args: argparse.Namespace):  # noqa: ANN202 (BtcAdapter, lazy import)
-    from cryptoswap.chains.btc import DEFAULT_ESPLORA, BtcAdapter
+    from cryptoswap_wallet.chains.btc import DEFAULT_ESPLORA, BtcAdapter
 
-    url = args.esplora or os.environ.get("CRYPTOSWAP_ESPLORA") or DEFAULT_ESPLORA
+    url = args.esplora or os.environ.get("CRYPTOSWAP_WALLET_ESPLORA") or DEFAULT_ESPLORA
     return BtcAdapter(url)
 
 
 def _eth_adapter(args: argparse.Namespace):  # noqa: ANN202 (EthAdapter, lazy import)
-    from cryptoswap.chains.eth import DEFAULT_RPC, EthAdapter
+    from cryptoswap_wallet.chains.eth import DEFAULT_RPC, EthAdapter
 
     url = (
         getattr(args, "eth_rpc", None)
-        or os.environ.get("CRYPTOSWAP_ETH_RPC")
+        or os.environ.get("CRYPTOSWAP_WALLET_ETH_RPC")
         or DEFAULT_RPC
     )
     return EthAdapter(url)
 
 
 def _tron_adapter(args: argparse.Namespace):  # noqa: ANN202 (TronAdapter, lazy import)
-    from cryptoswap.chains.tron import DEFAULT_TRON_API, TronAdapter
+    from cryptoswap_wallet.chains.tron import DEFAULT_TRON_API, TronAdapter
 
     url = (
         getattr(args, "tron_api", None)
-        or os.environ.get("CRYPTOSWAP_TRON_API")
+        or os.environ.get("CRYPTOSWAP_WALLET_TRON_API")
         or DEFAULT_TRON_API
     )
     return TronAdapter(url)
@@ -118,7 +125,7 @@ def cmd_add_hd(args: argparse.Namespace) -> int:
     pw = _passphrase()
     keystore = Keystore.load(path, pw)
     if args.generate:
-        from cryptoswap.chains.btc import generate_mnemonic
+        from cryptoswap_wallet.chains.btc import generate_mnemonic
 
         mnemonic = generate_mnemonic()
     else:
@@ -127,7 +134,7 @@ def cmd_add_hd(args: argparse.Namespace) -> int:
     keystore.save(path, pw)
     print(f"added HD key {args.label!r}")
     if args.generate:
-        from cryptoswap.chains.btc import BtcAdapter
+        from cryptoswap_wallet.chains.btc import BtcAdapter
 
         print(
             "BTC receive address:",
@@ -136,7 +143,7 @@ def cmd_add_hd(args: argparse.Namespace) -> int:
         print(
             "the new seed is stored ENCRYPTED in the keystore; back up the keystore "
             "file + passphrase.\nto reveal the words (do it privately): "
-            f"cryptoswap show-seed --key {args.label}"
+            f"cryptoswap-wallet show-seed --key {args.label}"
         )
     return 0
 
@@ -170,9 +177,9 @@ def cmd_list(args: argparse.Namespace) -> int:
 
 
 def cmd_address(args: argparse.Namespace) -> int:
-    from cryptoswap.chains.btc import BtcAdapter
-    from cryptoswap.chains.eth import EthAdapter
-    from cryptoswap.chains.tron import TronAdapter
+    from cryptoswap_wallet.chains.btc import BtcAdapter
+    from cryptoswap_wallet.chains.eth import EthAdapter
+    from cryptoswap_wallet.chains.tron import TronAdapter
 
     mnemonic = _load_mnemonic(args)
     print("BTC: ", BtcAdapter().derive_address(mnemonic, BTC_RECEIVE_PATH))
@@ -220,15 +227,15 @@ def _resolve_destination(args: argparse.Namespace, mnemonic: str | None) -> str 
     # ETH address, etc.
     chain = _derivable_chain(args.to_)
     if chain == "ETH":
-        from cryptoswap.chains.eth import EthAdapter
+        from cryptoswap_wallet.chains.eth import EthAdapter
 
         return EthAdapter().derive_address(mnemonic)
     if chain == "BTC":
-        from cryptoswap.chains.btc import BtcAdapter
+        from cryptoswap_wallet.chains.btc import BtcAdapter
 
         return BtcAdapter().derive_address(mnemonic, BTC_RECEIVE_PATH)
     if chain == "TRON":
-        from cryptoswap.chains.tron import TronAdapter
+        from cryptoswap_wallet.chains.tron import TronAdapter
 
         return TronAdapter().derive_address(mnemonic)
     return None  # unknown target chain: caller must pass --dest
@@ -290,12 +297,12 @@ def _confirm_and_execute(prepared, adapter, args: argparse.Namespace) -> int:  #
         return 1
     result = execute_swap(prepared, adapter, confirm=True)
     print(f"\nBROADCAST txid: {result.txid}")
-    print(f"track: cryptoswap status {result.txid}")
+    print(f"track: cryptoswap-wallet status {result.txid}")
     return 0
 
 
 def _swap_from_btc(args: argparse.Namespace) -> int:
-    from cryptoswap.chains.scan import scan_account
+    from cryptoswap_wallet.chains.scan import scan_account
 
     mnemonic = _load_mnemonic(args)
     dest = _resolve_destination(args, mnemonic)
@@ -323,7 +330,7 @@ def _swap_from_btc(args: argparse.Namespace) -> int:
         change_address = adapter.derive_address(mnemonic, BTC_CHANGE_PATH)
         fee_rate = adapter.fetch_fee_rate()
         if sweep:
-            from cryptoswap.chains.coins import InsufficientFunds, sweep_amount
+            from cryptoswap_wallet.chains.coins import InsufficientFunds, sweep_amount
 
             total = sum(u.value for u in utxos)
             try:
@@ -366,8 +373,8 @@ def _swap_from_btc(args: argparse.Namespace) -> int:
 
 
 def _swap_from_eth(args: argparse.Namespace) -> int:
-    from cryptoswap.chains.coins import InsufficientFunds
-    from cryptoswap.chains.eth import eth_sweep_amount
+    from cryptoswap_wallet.chains.coins import InsufficientFunds
+    from cryptoswap_wallet.chains.eth import eth_sweep_amount
 
     mnemonic = _load_mnemonic(args)
     dest = _resolve_destination(args, mnemonic)
@@ -432,7 +439,7 @@ def _swap_from_eth(args: argparse.Namespace) -> int:
 
 
 def cmd_add_liquidity(args: argparse.Namespace) -> int:
-    from cryptoswap.liquidity import add_liquidity_memo
+    from cryptoswap_wallet.liquidity import add_liquidity_memo
 
     pool = ASSET[args.asset]
     amount = int(round(args.amount * THORCHAIN_UNIT))
@@ -440,7 +447,7 @@ def cmd_add_liquidity(args: argparse.Namespace) -> int:
 
 
 def cmd_withdraw_liquidity(args: argparse.Namespace) -> int:
-    from cryptoswap.liquidity import withdraw_liquidity_memo
+    from cryptoswap_wallet.liquidity import withdraw_liquidity_memo
 
     pool = ASSET[args.asset]
     return _liquidity(args, memo=withdraw_liquidity_memo(pool, args.bps), amount=None)
@@ -467,8 +474,8 @@ def _liquidity(args: argparse.Namespace, *, memo: str, amount: int | None) -> in
 
 
 def _liquidity_btc(args: argparse.Namespace, *, memo: str, amount: int | None) -> int:
-    from cryptoswap.chains.scan import scan_account
-    from cryptoswap.swap import prepare_liquidity
+    from cryptoswap_wallet.chains.scan import scan_account
+    from cryptoswap_wallet.swap import prepare_liquidity
 
     mnemonic = _load_mnemonic(args)
     with _btc_adapter(args) as adapter, ThorchainClient() as thor:
@@ -516,7 +523,7 @@ def _liquidity_btc(args: argparse.Namespace, *, memo: str, amount: int | None) -
 
 
 def _liquidity_eth(args: argparse.Namespace, *, memo: str, amount: int | None) -> int:
-    from cryptoswap.swap import prepare_liquidity
+    from cryptoswap_wallet.swap import prepare_liquidity
 
     mnemonic = _load_mnemonic(args)
     with _eth_adapter(args) as adapter, ThorchainClient() as thor:
@@ -578,16 +585,26 @@ def _add_broadcast_args(sub: argparse.ArgumentParser) -> None:
         "--yes", action="store_true", help="skip the interactive confirm (automation)"
     )
     sub.add_argument("--max-fee", type=int, default=50_000, help="max BTC fee in sats")
-    sub.add_argument("--eth-rpc", help="Ethereum JSON-RPC URL ($CRYPTOSWAP_ETH_RPC)")
+    sub.add_argument(
+        "--eth-rpc", help="Ethereum JSON-RPC URL ($CRYPTOSWAP_WALLET_ETH_RPC)"
+    )
     sub.add_argument("--eth-gas", type=int, default=60000, help="ETH gas limit")
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="cryptoswap", description="CLI multi-currency wallet with THORChain swaps"
+        prog="cryptoswap-wallet",
+        description="CLI multi-currency wallet with THORChain swaps",
     )
-    parser.add_argument("--keystore", help="keystore path ($CRYPTOSWAP_KEYSTORE)")
-    parser.add_argument("--esplora", help="Esplora API base URL ($CRYPTOSWAP_ESPLORA)")
+    parser.add_argument(
+        "--version", "-V", action="version", version=f"%(prog)s {__version__}"
+    )
+    parser.add_argument(
+        "--keystore", help="keystore path ($CRYPTOSWAP_WALLET_KEYSTORE)"
+    )
+    parser.add_argument(
+        "--esplora", help="Esplora API base URL ($CRYPTOSWAP_WALLET_ESPLORA)"
+    )
     sub = parser.add_subparsers(dest="command")
 
     s = sub.add_parser("init", help="create an empty encrypted keystore")
@@ -621,8 +638,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     s = sub.add_parser("balance", help="show balances across supported chains")
     s.add_argument("--key")
-    s.add_argument("--eth-rpc", help="Ethereum JSON-RPC URL ($CRYPTOSWAP_ETH_RPC)")
-    s.add_argument("--tron-api", help="TRON API base URL ($CRYPTOSWAP_TRON_API)")
+    s.add_argument(
+        "--eth-rpc", help="Ethereum JSON-RPC URL ($CRYPTOSWAP_WALLET_ETH_RPC)"
+    )
+    s.add_argument("--tron-api", help="TRON API base URL ($CRYPTOSWAP_WALLET_TRON_API)")
     s.set_defaults(func=cmd_balance)
 
     s = sub.add_parser("quote", help="show a THORChain swap quote")
@@ -638,7 +657,9 @@ def build_parser() -> argparse.ArgumentParser:
         "--yes", action="store_true", help="skip the interactive confirm (automation)"
     )
     s.add_argument("--max-fee", type=int, default=50_000, help="max BTC fee in sats")
-    s.add_argument("--eth-rpc", help="Ethereum JSON-RPC URL ($CRYPTOSWAP_ETH_RPC)")
+    s.add_argument(
+        "--eth-rpc", help="Ethereum JSON-RPC URL ($CRYPTOSWAP_WALLET_ETH_RPC)"
+    )
     s.add_argument(
         "--eth-gas", type=int, default=60000, help="gas limit for ETH deposit"
     )

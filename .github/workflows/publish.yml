@@ -1,0 +1,31 @@
+name: Publish to PyPI
+
+# On a v* tag: run lint + the full test suite INCLUDING the live THORChain
+# integration tests, and only then build + publish. The integration tests are a
+# hard gate before anything reaches PyPI (a THORChain outage will block release).
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/cryptoswap-wallet
+    permissions:
+      id-token: write  # PyPI trusted publishing
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0  # hatch-vcs needs full history/tags for the version
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run pytest
+      - run: uv run pytest -m network  # integration tests gate the release
+      - run: uv build
+      - uses: pypa/gh-action-pypi-publish@release/v1

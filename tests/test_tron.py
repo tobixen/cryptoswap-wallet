@@ -4,7 +4,7 @@ import pytest
 
 pytest.importorskip("eth_account")
 
-from cryptoswap.chains.tron import TronAdapter, base58check_encode  # noqa: E402
+from cryptoswap_wallet.chains.tron import TronAdapter, base58check_encode  # noqa: E402
 
 MNEMONIC = (
     "abandon abandon abandon abandon abandon abandon "

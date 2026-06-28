@@ -9,9 +9,9 @@ import pytest
 
 pytest.importorskip("bitcoinlib")
 
-from cryptoswap.chains.btc import BtcAdapter  # noqa: E402
-from cryptoswap.chains.coins import Utxo  # noqa: E402
-from cryptoswap.verify import SwapPlan, verify_btc_swap  # noqa: E402
+from cryptoswap_wallet.chains.btc import BtcAdapter  # noqa: E402
+from cryptoswap_wallet.chains.coins import Utxo  # noqa: E402
+from cryptoswap_wallet.verify import SwapPlan, verify_btc_swap  # noqa: E402
 
 MNEMONIC = (
     "abandon abandon abandon abandon abandon abandon "
@@ -77,7 +77,7 @@ def test_signs_multiple_inputs_across_paths():
 
 
 def test_generate_mnemonic_is_usable():
-    from cryptoswap.chains.btc import generate_mnemonic
+    from cryptoswap_wallet.chains.btc import generate_mnemonic
 
     mnemonic = generate_mnemonic()
     assert len(mnemonic.split()) == 12
@@ -86,7 +86,7 @@ def test_generate_mnemonic_is_usable():
 
 
 def test_build_sweep_spends_all_with_no_change():
-    from cryptoswap.chains.coins import sweep_amount
+    from cryptoswap_wallet.chains.coins import sweep_amount
 
     a = BtcAdapter()
     p0, p1 = "m/84'/0'/0'/0/0", "m/84'/0'/0'/0/1"
@@ -125,7 +125,7 @@ def test_build_sweep_spends_all_with_no_change():
 
 
 def test_parse_address_info_confirmed_and_pending():
-    from cryptoswap.chains.btc import parse_address_info
+    from cryptoswap_wallet.chains.btc import parse_address_info
 
     info = parse_address_info(
         {
@@ -147,7 +147,7 @@ def test_parse_address_info_confirmed_and_pending():
 
 
 def test_parse_address_info_unused():
-    from cryptoswap.chains.btc import parse_address_info
+    from cryptoswap_wallet.chains.btc import parse_address_info
 
     info = parse_address_info(
         {
@@ -161,7 +161,7 @@ def test_parse_address_info_unused():
 
 
 def _quote(memo, *, inbound=VAULT, expiry=9_999_999_999, min_in=1000):
-    from cryptoswap.thorchain import Quote, SwapFees
+    from cryptoswap_wallet.thorchain import Quote, SwapFees
 
     return Quote(
         inbound_address=inbound,
@@ -182,7 +182,7 @@ def _quote(memo, *, inbound=VAULT, expiry=9_999_999_999, min_in=1000):
 
 
 def test_btc_build_and_verify_clean():
-    from cryptoswap.swap import SwapRequest
+    from cryptoswap_wallet.swap import SwapRequest
 
     a = BtcAdapter()
     addr = a.derive_address(MNEMONIC, PATH)
@@ -205,7 +205,7 @@ def test_btc_build_and_verify_clean():
 
 
 def test_btc_build_and_verify_flags_wrong_destination():
-    from cryptoswap.swap import SwapRequest
+    from cryptoswap_wallet.swap import SwapRequest
 
     a = BtcAdapter()
     addr = a.derive_address(MNEMONIC, PATH)

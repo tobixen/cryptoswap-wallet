@@ -1,29 +1,50 @@
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
 
 [project]
-name = "cryptoswap"
-version = "0.1.0.dev0"
-description = "CLI multi-currency wallet with non-custodial swaps via THORChain"
+name = "cryptoswap-wallet"
+dynamic = ["version"]
+description = "CLI multi-currency hot wallet with non-custodial cross-chain swaps via THORChain"
+readme = "README.md"
 requires-python = ">=3.12"
-dependencies = ["niquests>=3", "cryptography>=43"]
+license = { text = "GPL-3.0-or-later" }
+authors = [{ name = "Tobias Brox" }]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+]
+# bitcoinlib/eth-account/eth-abi are required (not extras): a wallet is useless
+# without its chain libraries, and `make install` should yield a working binary.
+dependencies = [
+  "niquests>=3",
+  "cryptography>=43",
+  "bitcoinlib>=0.7",
+  "eth-account>=0.13",
+  "eth-abi>=5",
+]
 
 [project.scripts]
-cryptoswap = "cryptoswap.cli:main"
+cryptoswap-wallet = "cryptoswap_wallet.cli:main"
 
-# Bitcoin support lives behind an extra. bitcoinlib is a pure-ish Python wallet
-# library (HD, UTXO services, coin selection, tx + OP_RETURN, signing,
-# broadcast) that installs on 3.14; compiled BDK does not.
-[project.optional-dependencies]
-btc = ["bitcoinlib>=0.7"]
-eth = ["eth-account>=0.13", "eth-abi>=5"]
+[project.urls]
+Repository = "https://github.com/tobixen/cryptoswap-wallet"
+Issues = "https://github.com/tobixen/cryptoswap-wallet/issues"
 
 [dependency-groups]
-dev = ["pytest>=8", "ruff>=0.15", "bitcoinlib>=0.7", "eth-account>=0.13", "eth-abi>=5"]
+dev = ["pytest>=8", "ruff>=0.15", "pre-commit>=4"]
+
+[tool.hatch.version]
+source = "vcs"
+
+[tool.hatch.build.hooks.vcs]
+version-file = "src/cryptoswap_wallet/_version.py"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/cryptoswap"]
+packages = ["src/cryptoswap_wallet"]
 
 [tool.ruff]
 src = ["src", "tests"]
