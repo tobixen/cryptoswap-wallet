@@ -25,7 +25,8 @@ Notes / caveats (see the chat that prompted this):
 ## From the core review (docs/core-review.md)
 
 Done: A1 (shared niquests `HttpClient`), M2 (fee fallback → max), L1 (fail-closed
-UTXOs), H1 (atomic keystore write), M1 (memo-pays-destination check).
+UTXOs), H1 (atomic keystore write), M1 (memo-pays-destination check), A4 (one
+`prepare_swap`; adapters own `build_and_verify`; single `SwapSource` protocol).
 
 Still open:
 
@@ -34,9 +35,10 @@ Still open:
 - **L2** — reject `amount <= 0` at parse time.
 - **A2/A3** — share the EVM key derivation + `to_checksum`/keccak helpers between
   ETH and TRON; default `wallet_balance` on an account-model base.
-- **A4/A5/A7** — let each adapter own build+plan+verify behind one `prepare()`,
-  split `ChainAdapter` into `WalletChain` vs `SourceChain`, and table-drive the
-  CLI per-chain factories/dispatch. Do this as the **lead-in to USDT-source**.
+- **A5** — table-drive the CLI per-chain factories / `_resolve_destination` /
+  `cmd_address` / `_swap_from_*`.
+- **A7** — split `base.ChainAdapter` into `WalletChain` vs `SourceChain` (Tron is
+  destination-only). The `swap.SwapSource` protocol already exists from A4.
 - **C-list** — keystore envelope `length` unused; one `ThreadPoolExecutor` per
   scan; `quote` memo row alignment; note ETH/TRON balance only inspects index 0;
   `--tolerance-bps` flag.
