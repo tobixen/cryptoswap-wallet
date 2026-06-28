@@ -358,10 +358,8 @@ def _swap_from_btc(args: argparse.Namespace) -> int:
 
 
 def _swap_from_eth(args: argparse.Namespace) -> int:
-    if args.amount == "max":
-        print("--amount max is not yet supported for an ETH source", file=sys.stderr)
-        return 2
-    from cryptoswap.chains.eth import DEFAULT_RPC, EthAdapter
+    from cryptoswap.chains.coins import InsufficientFunds
+    from cryptoswap.chains.eth import eth_sweep_amount
 
     mnemonic = _load_mnemonic(args)
     dest = _resolve_destination(args, mnemonic)
@@ -369,12 +367,23 @@ def _swap_from_eth(args: argparse.Namespace) -> int:
         print("a --dest address is required for this destination", file=sys.stderr)
         return 2
 
-    amount = int(round(args.amount * THORCHAIN_UNIT))
-    rpc = args.eth_rpc or os.environ.get("CRYPTOSWAP_ETH_RPC") or DEFAULT_RPC
-    with EthAdapter(rpc) as adapter, ThorchainClient() as thor:
+    sweep = args.amount == "max"
+    with _eth_adapter(args) as adapter, ThorchainClient() as thor:
         from_address = adapter.derive_address(mnemonic)
         nonce = adapter.get_nonce(from_address)
         max_fee_per_gas, max_priority_fee_per_gas = adapter.fetch_fees()
+        if sweep:
+            try:
+                amount = eth_sweep_amount(
+                    adapter.fetch_balance(from_address),
+                    gas=args.eth_gas,
+                    max_fee_per_gas=max_fee_per_gas,
+                )
+            except InsufficientFunds as exc:
+                print(f"ABORTED: {exc}", file=sys.stderr)
+                return 1
+        else:
+            amount = int(round(args.amount * THORCHAIN_UNIT))
         request = SwapRequest(
             from_asset="ETH.ETH",
             to_asset=ASSET[args.to_],

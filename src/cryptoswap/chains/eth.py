@@ -20,6 +20,7 @@ from eth_account import Account
 from eth_account.signers.local import LocalAccount
 
 from cryptoswap.chains.base import BalanceReport
+from cryptoswap.chains.coins import InsufficientFunds
 from cryptoswap.verify import WEI_PER_THORCHAIN_UNIT
 
 DEFAULT_ETH_DERIVATION = "m/44'/60'/0'/0/0"
@@ -34,6 +35,21 @@ def _keccak256(data: bytes) -> bytes:
     h = keccak.new(digest_bits=256)
     h.update(data)
     return h.digest()
+
+
+def eth_sweep_amount(balance_wei: int, gas: int, max_fee_per_gas: int) -> int:
+    """THORChain 1e8 amount sweeping the balance minus the worst-case gas reserve.
+
+    Reserves ``gas * max_fee_per_gas`` so the deposit always leaves enough wei to
+    pay the L1 fee; any sub-1e10-wei remainder is left behind.
+    """
+    sendable = balance_wei - gas * max_fee_per_gas
+    if sendable <= 0:
+        raise InsufficientFunds(
+            f"balance {balance_wei} wei too small to cover gas reserve "
+            f"{gas * max_fee_per_gas}"
+        )
+    return sendable // WEI_PER_THORCHAIN_UNIT
 
 
 def to_checksum_address(addr: bytes | str) -> str:

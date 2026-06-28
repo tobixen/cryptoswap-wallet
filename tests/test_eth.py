@@ -54,3 +54,21 @@ def test_build_eth_swap_tx_fields():
 def test_eth_sign_produces_typed_raw():
     raw = EthAdapter().sign(_build())
     assert raw.startswith("0x02")  # EIP-1559 typed transaction
+
+
+def test_eth_sweep_amount_leaves_gas_reserve():
+    from cryptoswap.chains.eth import eth_sweep_amount
+
+    amount = eth_sweep_amount(10**18, gas=60000, max_fee_per_gas=20_000_000_000)
+    expected = (10**18 - 60000 * 20_000_000_000) // 10**10
+    assert amount == expected
+
+
+def test_eth_sweep_amount_insufficient():
+    import pytest
+
+    from cryptoswap.chains.coins import InsufficientFunds
+    from cryptoswap.chains.eth import eth_sweep_amount
+
+    with pytest.raises(InsufficientFunds):
+        eth_sweep_amount(1000, gas=60000, max_fee_per_gas=20_000_000_000)
