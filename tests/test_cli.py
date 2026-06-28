@@ -85,6 +85,28 @@ def test_add_liquidity_amount_max_parses():
     assert args.amount == "max"
 
 
+def test_add_liquidity_backend_defaults_to_thorchain():
+    args = build_parser().parse_args(
+        ["add-liquidity", "--asset", "BTC", "--amount", "1"]
+    )
+    assert args.backend == "thorchain"
+
+
+def test_add_liquidity_backend_maya_parses():
+    args = build_parser().parse_args(
+        ["add-liquidity", "--asset", "BTC", "--amount", "1", "--backend", "maya"]
+    )
+    assert args.backend == "maya"
+
+
+def test_liquidity_backend_has_no_auto():
+    # LP is not price-routed, so 'auto' must not be offered.
+    with pytest.raises(SystemExit):
+        build_parser().parse_args(
+            ["add-liquidity", "--asset", "BTC", "--amount", "1", "--backend", "auto"]
+        )
+
+
 def test_withdraw_liquidity_parses():
     args = build_parser().parse_args(
         ["withdraw-liquidity", "--asset", "ETH", "--bps", "5000"]

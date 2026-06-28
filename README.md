@@ -95,6 +95,11 @@ pauses LP deposits network-wide (`PAUSELP` in mimir); when it does, an add would
 be refunded minus gas, so `add-liquidity` checks this first and aborts rather
 than waste the round-trip fee. Withdrawals stay open so you can always exit.
 
+`add-liquidity --backend maya` LPs on the Maya fork instead (default
+`thorchain`). Maya's LP is often open when THORChain's is paused — but Maya pairs
+with **CACAO** (not RUNE), has a different pool set, and has **no TRON pool**, so
+only its supported assets (e.g. BTC, ETH) work there.
+
 What works for the currencies with any support today. ✅ = working, ◑ =
 partial, blank = not yet. Currencies with **Support = none** above support no
 features yet.

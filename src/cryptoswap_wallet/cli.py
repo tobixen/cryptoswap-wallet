@@ -117,6 +117,13 @@ def _load_mnemonic(args: argparse.Namespace) -> str:
     raise SystemExit("no matching HD key in keystore")
 
 
+def _liquidity_client(args: argparse.Namespace):  # noqa: ANN202 (ThorchainClient)
+    """The backend client for an LP op (thorchain or its fork maya)."""
+    from cryptoswap_wallet.backends import get_backend
+
+    return get_backend(getattr(args, "backend", "thorchain")).client
+
+
 def _warn(header: str, *bullets: str) -> None:
     """Print a warning header followed by indented bullet lines (to stderr)."""
     print(header, file=sys.stderr)
@@ -693,7 +700,7 @@ def _liquidity_btc(
     from cryptoswap_wallet.swap import prepare_liquidity
 
     mnemonic = _load_mnemonic(args)
-    with _btc_adapter(args) as adapter, ThorchainClient() as thor:
+    with _btc_adapter(args) as adapter, _liquidity_client(args) as thor:
         records = scan_account(
             derive_address=lambda p: adapter.derive_address(mnemonic, p),
             probe=adapter.address_info,
@@ -757,7 +764,7 @@ def _liquidity_eth(
     from cryptoswap_wallet.swap import prepare_liquidity
 
     mnemonic = _load_mnemonic(args)
-    with _eth_adapter(args) as adapter, ThorchainClient() as thor:
+    with _eth_adapter(args) as adapter, _liquidity_client(args) as thor:
         from_address = adapter.derive_address(mnemonic)
         nonce = adapter.get_nonce(from_address)
         max_fee_per_gas, max_priority_fee_per_gas = adapter.fetch_fees()
@@ -804,7 +811,7 @@ def _liquidity_tron(
         print("--amount max is not supported for TRON liquidity yet", file=sys.stderr)
         return 2
     mnemonic = _load_mnemonic(args)
-    with _tron_adapter(args) as adapter, ThorchainClient() as thor:
+    with _tron_adapter(args) as adapter, _liquidity_client(args) as thor:
         try:
             prepared = prepare_liquidity(
                 thorchain=thor,
@@ -866,6 +873,17 @@ def _add_broadcast_args(sub: argparse.ArgumentParser) -> None:
         "--eth-rpc", help="Ethereum JSON-RPC URL ($CRYPTOSWAP_WALLET_ETH_RPC)"
     )
     sub.add_argument("--eth-gas", type=int, default=60000, help="ETH gas limit")
+
+
+def _add_liquidity_backend_arg(sub: argparse.ArgumentParser) -> None:
+    # No 'auto': LP is not price-routed — it's a choice of which network (and
+    # which pairing, RUNE vs Maya's CACAO) to hold the position on.
+    sub.add_argument(
+        "--backend",
+        choices=["thorchain", "maya"],
+        default="thorchain",
+        help="network to LP on (maya pairs with CACAO; has no TRON pool)",
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -952,6 +970,7 @@ def build_parser() -> argparse.ArgumentParser:
         required=True,
         help="amount of --asset, or 'max' to add the whole balance (BTC/ETH)",
     )
+    _add_liquidity_backend_arg(s)
     _add_broadcast_args(s)
     s.set_defaults(func=cmd_add_liquidity)
 
@@ -962,6 +981,7 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument(
         "--bps", type=int, default=10000, help="basis points to withdraw (1..10000)"
     )
+    _add_liquidity_backend_arg(s)
     _add_broadcast_args(s)
     s.set_defaults(func=cmd_withdraw_liquidity)
 

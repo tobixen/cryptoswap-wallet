@@ -20,7 +20,8 @@ automatically from git tags (PEP 440 / SemVer).
   a swap is quoted or broadcast.
 - Registry-based multi-chain `balance`; `quote`, `status`, `address`.
 - Experimental `add-liquidity` / `withdraw-liquidity` (BTC, ETH, TRX,
-  single-sided).
+  single-sided), with `--backend {thorchain,maya}` and a pre-flight `PAUSELP`
+  check that aborts an add THORChain would only refund.
 - `send` to an external address (BTC; plain transfer, no swap/memo), with
   `--amount max` to sweep. Guarded by a dedicated verify gate.
 - Packaging: Hatch + hatch-vcs, `make install`, `--version`, CI, and PyPI

@@ -118,7 +118,9 @@ lowest-price routing across backends.
 - **`send` to external address**: see *Next up* item 1 (BTC first).
 - **BasicSwap backend** (trustless P2P / privacy / XMR): orchestrate its daemon
   via API; needs full nodes (heavy) and a different custody seam. Future.
-- **`--backend auto` for liquidity**: LP currently THORChain-only.
+- **liquidity backend**: `add/withdraw-liquidity --backend {thorchain,maya}` now
+  works (Maya pairs with CACAO, different pools, no TRON). No `auto` for LP —
+  it's a network/pairing choice, not price-routed.
 
 ## Other known gaps
 
