@@ -119,3 +119,105 @@ The only things I'd genuinely follow up on:
 3. **N4** — case-sensitive memo check for base58 chains + one live-memo sanity check.
 
 N3 and N5 are notes, not asks.
+
+---
+
+# Round 3 — token source + liquidity (latest changes)
+
+*Date: 2026-06-28 (same day, later). Scope: everything since `f3731a8` — notably
+`a80ff78` (USDT-ETH ERC-20 as a swap **source**), `263e9d7` (experimental
+add/withdraw liquidity), the live-integration tests, and the in-progress
+`cryptoswap` → `cryptoswap_wallet` rename (uncommitted at review time).
+State: `pytest` 108 passed (+4 live deselected); **`ruff check` now reports 9
+errors** (was clean); line refs are to `src/cryptoswap_wallet/`.*
+
+The A4 orchestrator absorbed both new features cleanly — `build_and_verify` /
+`build_and_verify_deposit` on the adapter, `prepare_liquidity` mirroring
+`prepare_swap`. The *structure* held up well. The problem is the **token verify
+gate is materially weaker than the native-ETH gate**, and the one configured
+token currently crashes. For a hot wallet, T1 is a must-fix before USDT-source is
+more than experimental.
+
+## T0 — USDT-ETH source crashes; the feature is non-functional as shipped
+
+`ASSET["USDT-ETH"] = "ETH.USDT-0XDAC17…EC7"` (cli.py:42) uses an uppercase `0X`,
+but `to_checksum_address` does `addr.removeprefix("0x")` (lowercase only,
+eth.py:86), so `bytes.fromhex("0XDAC…")` raises `ValueError`. `build_token_swap`
+(eth.py:295) hits this on the real token, and `_swap_from_eth` only catches
+`SwapAborted` — so it's an uncaught traceback, not a clean abort. Tests pass
+because none exercise `build_token_swap` with the real ASSET string.
+
+Crash, not loss (it fails before signing) — but the headline feature doesn't run.
+**Fix:** normalize casing (case-insensitive prefix strip, or lowercase the map)
+**and** add a unit test that builds the token swap from the real `ASSET` entry.
+
+## T1 (HIGH) — the token verify gate never checks the amount
+
+`verify_eth_token_swap` (eth.py:139-168) validates vault, token, memo,
+destination, chainId, `value==0`, and fee — but **not** the `native` amount in
+the deposit calldata, nor the approve allowance amount/spender. The native-ETH
+gate checks `value != plan.amount_wei` (verify.py); the token path lost that
+protection, so a wrong amount (e.g. from a bad `decimals`, see T5) passes the
+gate. Amount is core intent; the gate exists to bind the broadcast tx to intent.
+
+**Fix:** ABI-decode the deposit calldata and assert `amount == built.native_amount`;
+assert the approve calldata encodes `(router, built.native_amount)`.
+
+## T2 (MEDIUM) — substring checks are positional-blind
+
+The gate uses containment: `built.vault[2:].lower() not in data` and the same for
+token (eth.py:158-161). Both are ABI-encoded address words, so a calldata that
+**swapped the vault and token slots would pass both checks**. There's also no
+assertion that `data` begins with `DEPOSIT_SELECTOR`. Same weakness class as the
+M1 memo substring (N4), but more consequential — multiple confusable addresses.
+
+**Fix:** decode by selector + positional args rather than substring containment
+(the same decode that T1 needs).
+
+## T3 (MEDIUM) — standing ERC-20 allowance if the deposit fails after approve
+
+approve (nonce n) + deposit (nonce n+1) are broadcast sequentially (eth.py:308-321,
+broadcast eth.py:228). If approve mines but deposit drops/reverts, the router
+keeps an allowance. **Bounded** — the approve is for the exact `native` amount,
+not unlimited (good) — and the happy path is safe (sequential nonces guarantee
+approve executes before deposit). Worth: surface the residual-allowance risk to
+the user, and/or read the existing allowance first to skip a redundant approve.
+
+## T5 (LOW) — `decimals` trusted from the token contract over RPC
+
+`fetch_token_decimals` (eth.py:206) drives the amount scaling
+(`native = amount * 10**decimals // 10**8`, eth.py:300). A wrong value mis-scales
+the swap and — until T1 lands — isn't gate-caught. For a known token the decimals
+are fixed (USDT = 6); validate against a constant in the `ASSET` entry rather than
+trusting RPC for a value that determines how much you send.
+
+## L-1 (MEDIUM, inherent) — liquidity verification is self-referential
+
+`prepare_liquidity` (swap.py:129) takes the vault from `status.address`
+(inbound_addresses) and the gate checks `to == plan.inbound_address` — the **same
+input on both sides** (eth.py:421-426, btc.py plan). With no quote there is no
+second source to cross-check the vault against, so LP deposits are structurally
+less verifiable than swaps (which get `inbound_address` from the quote). Inherent
+to LP; just document it. The `+:POOL` / `-:POOL:bps` memos themselves are simple
+and unit-tested (liquidity.py). Note also the synthetic `now + 3600` expiry
+(eth.py:425) makes the expiry check a no-op for LP — acceptable.
+
+## R1 — ruff regressed (9 errors)
+
+2 in `eth.py` (import sort + a long line), 7 in `cli.py` (long lines). The release
+CI (`9d16ee9`) gates on lint, so this is WIP-tree dirt, not shipped:
+`ruff check --fix` + wrapping the long lines clears it.
+
+## Carried forward (still open from earlier rounds)
+
+A2/A3/A5/A7, M3, L2 (tracked in `docs/TODO.md`); N4 (case-sensitive base58 memo
+check) and N5 (BTC→token-destination memo vs 80-byte OP_RETURN) from Round 2 —
+N5 becomes live as USDT destinations from BTC are exercised.
+
+## Suggested order
+
+1. **T0** + a real-ASSET token-swap test (unbreaks the feature).
+2. **T1** amount-binding gate (decode calldata) + **T2** positional/selector checks
+   in the same change.
+3. **R1** ruff, **T3** allowance UX, **T5** decimals constant.
+4. Document **L-1** (LP is less verifiable by construction).

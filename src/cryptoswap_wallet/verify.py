@@ -17,6 +17,22 @@ OP_RETURN_MAX_BYTES = 80
 WEI_PER_THORCHAIN_UNIT = 10**10
 
 
+def memo_pays_destination(destination: str, memo: str) -> bool:
+    """Whether the swap memo actually pays ``destination``.
+
+    Exact (case-sensitive) match — correct for bech32 (BTC) and base58 (TRON),
+    where case is significant. Only EVM hex addresses (``0x…``) get a
+    case-insensitive fallback, since THORChain may re-case them.
+    """
+    if not destination:
+        return True
+    if destination in memo:
+        return True
+    if destination.lower().startswith("0x"):
+        return destination.lower() in memo.lower()
+    return False
+
+
 @dataclasses.dataclass(frozen=True)
 class TxOutput:
     """One output of a Bitcoin transaction.
@@ -104,7 +120,7 @@ def verify_btc_swap(
             problems.append(f"change output to non-owned address {o.address}")
 
     # The quoted memo must actually pay our own destination.
-    if plan.destination and plan.destination.lower() not in plan.memo.lower():
+    if not memo_pays_destination(plan.destination, plan.memo):
         problems.append(
             f"quoted memo {plan.memo!r} does not pay destination {plan.destination}"
         )

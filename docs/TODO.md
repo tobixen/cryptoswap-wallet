@@ -22,6 +22,20 @@ Notes / caveats (see the chat that prompted this):
   never happens, no funds lost) — warn the user.
 - Mind Bitcoin mempool ancestor/descendant limits.
 
+## From core review 2 (docs/core-review-2.md)
+
+Done: T0 (`to_checksum_address` handles `0X`/`0x`; real-ASSET token build test),
+T1/T2 (ABI-decode the approve+deposit calldata positionally and bind amount /
+vault / token / memo to intent, with selector checks), T3 (CLI warns about the
+residual router allowance if a token deposit fails after approve), T5
+(`KNOWN_TOKEN_DECIMALS` + `token_decimals()`), N4 (case-sensitive
+`memo_pays_destination` with hex-only fallback), R1 (ruff clean). L-1
+documented (LP vault is self-referential — see `prepare_liquidity` docstring).
+
+Still open: N5 (BTC→token-destination memo vs 80-byte OP_RETURN limit — becomes
+live once USDT destinations from BTC are exercised); carried-forward
+A2/A3/A5/A7, M3, L2 below.
+
 ## From the core review (docs/core-review.md)
 
 Done: A1 (shared niquests `HttpClient`), M2 (fee fallback → max), L1 (fail-closed

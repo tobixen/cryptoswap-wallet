@@ -15,6 +15,7 @@ import dataclasses
 from typing import Any
 
 from Crypto.Hash import keccak
+from eth_abi import decode as abi_decode
 from eth_abi import encode as abi_encode
 from eth_account import Account
 from eth_account.signers.local import LocalAccount
@@ -27,6 +28,7 @@ from cryptoswap_wallet.thorchain import Quote
 from cryptoswap_wallet.verify import (
     WEI_PER_THORCHAIN_UNIT,
     EthSwapPlan,
+    memo_pays_destination,
     verify_eth_swap,
 )
 
@@ -43,6 +45,11 @@ DEPOSIT_SELECTOR = (
 DECIMALS_SELECTOR = "313ce567"  # decimals()
 APPROVE_GAS = 70000
 TOKEN_DEPOSIT_GAS = 200000
+
+# Known token decimals — don't trust an RPC value that determines how much we send.
+KNOWN_TOKEN_DECIMALS = {
+    "0xdac17f958d2ee523a2206206994597c13d831ec7": 6,  # ETH USDT
+}
 
 Account.enable_unaudited_hdwallet_features()
 
@@ -87,7 +94,9 @@ def eth_sweep_amount(balance_wei: int, gas: int, max_fee_per_gas: int) -> int:
 def to_checksum_address(addr: bytes | str) -> str:
     """EIP-55 checksum encoding of a 20-byte address (bytes or hex string)."""
     if isinstance(addr, str):
-        addr = bytes.fromhex(addr.removeprefix("0x"))
+        if addr[:2].lower() == "0x":  # accept 0x or 0X (THORChain uppercases)
+            addr = addr[2:]
+        addr = bytes.fromhex(addr)
     lower = addr.hex()
     digest = _keccak256(lower.encode()).hex()
     encoded = "".join(
@@ -140,10 +149,22 @@ class EthTokenBuiltSwap:
         return sum(t["gas"] * t["maxFeePerGas"] for t in self.txs)
 
 
+def _decode_call(data: str, selector: str, types: list[str]) -> tuple[Any, ...]:
+    """Split a 0x calldata into (selector, decoded args); raise on selector mismatch."""
+    raw = bytes.fromhex(data.removeprefix("0x"))
+    if raw[:4].hex() != selector:
+        raise ValueError(f"selector {raw[:4].hex()} != expected {selector}")
+    return tuple(abi_decode(types, raw[4:]))
+
+
 def verify_eth_token_swap(
     *, built: EthTokenBuiltSwap, destination: str, now: int, max_fee_wei: int
 ) -> list[str]:
-    """Gate for an ERC-20 token deposit (approve + router.depositWithExpiry)."""
+    """Gate for an ERC-20 token deposit (approve + router.depositWithExpiry).
+
+    Decodes the calldata positionally (not substring containment) and binds every
+    field — including the **amount** on both txs — to the intended values.
+    """
     problems: list[str] = []
     approve, deposit = built.approve_tx, built.deposit_tx
 
@@ -157,16 +178,41 @@ def verify_eth_token_swap(
         problems.append("token txs must not send ETH value")
     if approve["chainId"] != CHAIN_ID or deposit["chainId"] != CHAIN_ID:
         problems.append("wrong chainId")
-    # The deposit calldata must carry our vault, token and memo.
-    data = deposit["data"].lower()
-    if built.vault[2:].lower() not in data:
-        problems.append("deposit calldata does not contain the vault")
-    if built.token[2:].lower() not in data:
-        problems.append("deposit calldata does not contain the token")
-    if built.memo.encode().hex() not in data:
-        problems.append("deposit calldata does not contain the memo")
-    if destination and destination.lower() not in built.memo.lower():
-        problems.append(f"memo {built.memo!r} does not pay destination {destination}")
+
+    try:
+        spender, allowance = _decode_call(
+            approve["data"], APPROVE_SELECTOR, ["address", "uint256"]
+        )
+    except Exception:  # noqa: BLE001 - any decode failure is a reject
+        problems.append("approve calldata could not be decoded")
+    else:
+        if spender.lower() != built.router.lower():
+            problems.append(f"approve spender {spender} != router {built.router}")
+        if allowance != built.native_amount:
+            problems.append(f"approve amount {allowance} != {built.native_amount}")
+
+    try:
+        d_vault, d_token, d_amount, d_memo, d_expiry = _decode_call(
+            deposit["data"],
+            DEPOSIT_SELECTOR,
+            ["address", "address", "uint256", "string", "uint256"],
+        )
+    except Exception:  # noqa: BLE001 - any decode failure is a reject
+        problems.append("deposit calldata could not be decoded")
+    else:
+        if d_vault.lower() != built.vault.lower():
+            problems.append(f"deposit vault {d_vault} != {built.vault}")
+        if d_token.lower() != built.token.lower():
+            problems.append(f"deposit token {d_token} != {built.token}")
+        if d_amount != built.native_amount:
+            problems.append(f"deposit amount {d_amount} != {built.native_amount}")
+        if d_memo != built.memo:
+            problems.append(f"deposit memo {d_memo!r} != {built.memo!r}")
+        if d_expiry != built.expiry:
+            problems.append(f"deposit expiry {d_expiry} != {built.expiry}")
+        if not memo_pays_destination(destination, d_memo):
+            problems.append(f"memo {d_memo!r} does not pay destination {destination}")
+
     if built.fee > max_fee_wei:
         problems.append(f"max fee {built.fee} wei exceeds limit {max_fee_wei}")
     return problems
@@ -212,6 +258,16 @@ class EthAdapter(HttpClient):
             "eth_call", [{"to": token, "data": "0x" + DECIMALS_SELECTOR}, "latest"]
         )
         return int(result, 16)
+
+    def token_decimals(self, token: str) -> int:
+        """Decimals for a token: a trusted constant for known tokens, else RPC.
+
+        The value scales how much we send, so we don't trust RPC for tokens we
+        already know (e.g. USDT = 6).
+        """
+        key = "0x" + token.lower().removeprefix("0x")
+        known = KNOWN_TOKEN_DECIMALS.get(key)
+        return known if known is not None else self.fetch_token_decimals(token)
 
     def wallet_balance(self, mnemonic: str) -> BalanceReport:
         address = self.derive_address(mnemonic)
@@ -356,7 +412,7 @@ class EthAdapter(HttpClient):
                 nonce=nonce,
                 max_fee_per_gas=max_fee_per_gas,
                 max_priority_fee_per_gas=max_priority_fee_per_gas,
-                decimals=self.fetch_token_decimals(request.from_asset.split("-", 1)[1]),
+                decimals=self.token_decimals(request.from_asset.split("-", 1)[1]),
             )
             problems = verify_eth_token_swap(
                 built=built_token,

@@ -435,6 +435,12 @@ def _swap_from_eth(args: argparse.Namespace) -> int:
     if sweep and is_token:
         print("--amount max is not supported for token sources yet", file=sys.stderr)
         return 2
+    if is_token:
+        print(
+            "token source: 2 txs (approve + deposit). If the deposit fails after the "
+            "approve, an exact-amount allowance to the router remains.",
+            file=sys.stderr,
+        )
     with _eth_adapter(args) as adapter:
         from_address = adapter.derive_address(mnemonic)
         nonce = adapter.get_nonce(from_address)

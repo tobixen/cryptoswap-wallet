@@ -139,6 +139,14 @@ def prepare_liquidity(
 
     ``amount`` of ``None`` means "use the chain's dust threshold" (for withdraws,
     where the deposit is just a trigger).
+
+    Caveat (less verifiable than a swap by construction): the vault here comes
+    from ``inbound_addresses`` and the verify gate then checks the tx pays that
+    same address — the same input on both sides. A swap cross-checks the vault
+    against an independent quote; LP has no second source, so a compromised
+    THORNode response is not caught here. The ``+:POOL`` / ``-:POOL:bps`` memos
+    are simple and unit-tested, and LP is opt-in experimental. Treat the vault
+    as trusted only as far as you trust the configured THORNode.
     """
     status = thorchain.inbound_addresses().get(adapter.chain)
     if status is None or not status.tradable:

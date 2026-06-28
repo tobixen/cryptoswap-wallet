@@ -189,3 +189,50 @@ def test_eth_token_sign_produces_two_raws():
     raws = EthAdapter().sign(_build_usdt())
     assert len(raws) == 2
     assert all(r.startswith("0x02") for r in raws)
+
+
+def test_eth_token_build_from_uppercase_0x_asset():
+    # ASSET uses THORChain's uppercase "0X..." contract form — must not crash (T0).
+    from cryptoswap_wallet.swap import SwapRequest
+
+    asset = "ETH.USDT-0XDAC17F958D2EE523A2206206994597C13D831EC7"
+    req = SwapRequest(
+        from_asset=asset, to_asset="BTC.BTC", amount=500_000_000, destination="bc1qx"
+    )
+    built = EthAdapter().build_token_swap(
+        mnemonic=MNEMONIC,
+        request=req,
+        quote=_eth_token_quote("=:b:bc1qx"),
+        nonce=1,
+        max_fee_per_gas=20_000_000_000,
+        max_priority_fee_per_gas=1_000_000_000,
+        decimals=6,
+    )
+    assert built.token.lower().endswith("831ec7")
+
+
+def test_eth_token_verify_rejects_wrong_amount():
+    from cryptoswap_wallet.chains.eth import encode_deposit, verify_eth_token_swap
+
+    built = _build_usdt()
+    built.deposit_tx["data"] = encode_deposit(
+        built.vault, built.token, built.native_amount + 1, built.memo, built.expiry
+    )
+    problems = verify_eth_token_swap(
+        built=built, destination="bc1qexampledest", now=0, max_fee_wei=10**18
+    )
+    assert any("amount" in p.lower() for p in problems)
+
+
+def test_eth_token_verify_rejects_swapped_vault_token():
+    from cryptoswap_wallet.chains.eth import encode_deposit, verify_eth_token_swap
+
+    built = _build_usdt()
+    # vault and token slots swapped — substring checks would have missed this.
+    built.deposit_tx["data"] = encode_deposit(
+        built.token, built.vault, built.native_amount, built.memo, built.expiry
+    )
+    problems = verify_eth_token_swap(
+        built=built, destination="bc1qexampledest", now=0, max_fee_wei=10**18
+    )
+    assert problems
