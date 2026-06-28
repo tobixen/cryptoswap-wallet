@@ -166,13 +166,13 @@ def cmd_balance(args: argparse.Namespace) -> int:
     return 0
 
 
-def _resolve_destination(args: argparse.Namespace) -> str | None:
+def _resolve_destination(args: argparse.Namespace, mnemonic: str | None) -> str | None:
     if args.dest:
         return args.dest
-    if ASSET[args.to_] == "ETH.ETH":
+    if ASSET[args.to_] == "ETH.ETH" and mnemonic is not None:
         from cryptoswap.chains.eth import EthAdapter
 
-        return EthAdapter().derive_address(_load_mnemonic(args))
+        return EthAdapter().derive_address(mnemonic)
     return None
 
 
@@ -181,7 +181,13 @@ def cmd_quote(args: argparse.Namespace) -> int:
         print("quote needs a numeric amount ('max' is only for swap)", file=sys.stderr)
         return 2
     amount = int(round(args.amount * THORCHAIN_UNIT))
-    dest = _resolve_destination(args)
+    # Only decrypt the keystore if we actually need to derive the destination.
+    mnemonic = (
+        _load_mnemonic(args)
+        if args.dest is None and ASSET[args.to_] == "ETH.ETH"
+        else None
+    )
+    dest = _resolve_destination(args, mnemonic)
     with ThorchainClient() as thor:
         quote = thor.quote_swap(ASSET[args.from_], ASSET[args.to_], amount, dest)
     out = quote.expected_amount_out / THORCHAIN_UNIT
@@ -204,7 +210,7 @@ def cmd_swap(args: argparse.Namespace) -> int:
     from cryptoswap.chains.scan import scan_account
 
     mnemonic = _load_mnemonic(args)
-    dest = _resolve_destination(args)
+    dest = _resolve_destination(args, mnemonic)
     if dest is None:
         print("a --dest address is required for this destination", file=sys.stderr)
         return 2
