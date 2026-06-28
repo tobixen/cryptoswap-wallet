@@ -109,7 +109,9 @@ def _entry_from_dict(data: dict[str, Any]) -> KeyEntry:
             passphrase=Secret(pw) if pw else None,
         )
     if kind == "raw":
-        return RawKey(label=data["label"], chain=data["chain"], secret=Secret(data["secret"]))
+        return RawKey(
+            label=data["label"], chain=data["chain"], secret=Secret(data["secret"])
+        )
     raise KeystoreError(f"unknown key entry kind {kind!r}")
 
 
@@ -142,7 +144,9 @@ class Keystore:
         self.entries.append(entry)
         return entry
 
-    def save(self, path: str | os.PathLike[str], passphrase: str, *, n: int = DEFAULT_N) -> None:
+    def save(
+        self, path: str | os.PathLike[str], passphrase: str, *, n: int = DEFAULT_N
+    ) -> None:
         plaintext = json.dumps(
             {"entries": [_entry_to_dict(e) for e in self.entries]}
         ).encode()
@@ -186,7 +190,12 @@ class Keystore:
 
 
 def _derive_key(
-    passphrase: str, salt: bytes, *, n: int = DEFAULT_N, r: int = SCRYPT_R, p: int = SCRYPT_P
+    passphrase: str,
+    salt: bytes,
+    *,
+    n: int = DEFAULT_N,
+    r: int = SCRYPT_R,
+    p: int = SCRYPT_P,
 ) -> bytes:
     kdf = Scrypt(salt=salt, length=KEY_LEN, n=n, r=r, p=p)
     return kdf.derive(passphrase.encode())
