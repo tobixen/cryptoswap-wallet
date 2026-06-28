@@ -45,7 +45,7 @@ def test_swap_requires_amount():
 
 def test_swap_rejects_unknown_asset():
     with pytest.raises(SystemExit):
-        build_parser().parse_args(["swap", "--amount", "1", "--to", "DOGE"])
+        build_parser().parse_args(["swap", "--amount", "1", "--to", "NOPE"])
 
 
 def test_swap_from_eth_parses():
@@ -139,6 +139,37 @@ def test_asset_map():
     assert ASSET["TRX"] == "TRON.TRX"
     assert ASSET["USDT-TRON"].startswith("TRON.USDT-")
     assert ASSET["USDT-ETH"].startswith("ETH.USDT-")
+    # Destination-only assets (item 3).
+    assert ASSET["LTC"] == "LTC.LTC"
+    assert ASSET["DOGE"] == "DOGE.DOGE"
+    assert ASSET["BCH"] == "BCH.BCH"
+
+
+def test_swap_to_ltc_parses():
+    args = build_parser().parse_args(
+        ["swap", "--to", "LTC", "--amount", "0.01", "--dest", "ltc1qexample"]
+    )
+    assert ASSET[args.to_] == "LTC.LTC"
+
+
+def test_resolve_destination_rejects_bad_dest():
+    from cryptoswap_wallet.cli import _resolve_destination
+
+    args = build_parser().parse_args(
+        ["swap", "--to", "LTC", "--amount", "0.01", "--dest", "not-a-real-address!!"]
+    )
+    with pytest.raises(SystemExit):
+        _resolve_destination(args, mnemonic=None)
+
+
+def test_resolve_destination_accepts_good_ltc_dest():
+    from cryptoswap_wallet.cli import _resolve_destination
+
+    dest = "ltc1qg9stkxrszkdqsuj92lm4c7akvk36zvhqw7p6ck"
+    args = build_parser().parse_args(
+        ["swap", "--to", "LTC", "--amount", "0.01", "--dest", dest]
+    )
+    assert _resolve_destination(args, mnemonic=None) == dest
 
 
 def test_resolve_destination_for_usdt_targets():

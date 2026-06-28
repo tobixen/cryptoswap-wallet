@@ -17,14 +17,14 @@ Owner's requested order; two-sided liquidity comes *after* these.
    `Available`. Broadcast remains unproven against mainnet (no funds spent in
    testing) — same caveat as the BTC/ETH spending paths.
 
-3. **More swap *destinations* via external `--dest` addresses.** Destination-only
-   support is cheap: THORChain/Maya pay the output to any valid address on the
-   destination chain, so a new destination asset mainly needs an `ASSET` entry +
-   destination-address validation — no signing and no full adapter, and with
-   `--dest` the user supplies the address so we need no key derivation for that
-   chain either. Good value/effort. Candidates: LTC, DOGE, BCH, ATOM, XRP, SOL,
-   plus the Maya-only DASH/ZEC/ADA/ARB already noted under *Swap backends*. Ties
-   into A5's `_resolve_destination` table-drive.
+3. **More swap *destinations* via external `--dest` addresses.** **DONE for
+   LTC, DOGE, BCH** — added as `ASSET` entries (destination-only) with a
+   permissive per-chain `--dest` sanity check (`addresses.py`; prefix/charset/
+   length, not checksum — THORChain validates the checksum). Live quote tests
+   confirm the pools and that the memo pays the dest. Remaining candidates: ATOM,
+   XRP, SOL (XRP needs care re: destination tag), plus the Maya-only
+   DASH/ZEC/ADA/ARB under *Swap backends*. A full checksum validator (bech32/
+   base58check/cashaddr) would be a stronger guard than the current sanity check.
 
 4. **Two-sided (symmetric) liquidity — gated behind a RUNE/THORChain backend.**
    A symmetric add is two *linked* deposits: the asset leg (`+:POOL:<thor1addr>`

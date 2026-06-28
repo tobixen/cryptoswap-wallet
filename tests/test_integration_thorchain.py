@@ -15,6 +15,9 @@ pytestmark = pytest.mark.network
 ETH_DEST = "0x9858EfFD232B4033E47d90003D41EC34EcaEda94"
 BTC_DEST = "bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu"
 TRON_DEST = "TUEZSdKsoDHQMeZwihtdoBiN46zxhGWYdH"
+LTC_DEST = "ltc1qjmxnz78nmc8nq77wuxh25n2es7rzm5c2rkk4wh"
+DOGE_DEST = "DH5yaieqoZN36fDVciNyRueRGvGLR3mr7L"
+BCH_DEST = "qpm2qsznhks23z7629mms6s4cwef74vcwvy22gdx6a"
 
 
 def test_inbound_addresses_live():
@@ -45,3 +48,16 @@ def test_eth_usdt_source_quote_live():
         quote = thor.quote_swap(ASSET["USDT-ETH"], "BTC.BTC", 5_000_000_000, BTC_DEST)
     assert quote.router  # token source needs the router for depositWithExpiry
     assert quote.expected_amount_out > 0
+
+
+@pytest.mark.parametrize(
+    ("asset", "dest"),
+    [("LTC", LTC_DEST), ("DOGE", DOGE_DEST), ("BCH", BCH_DEST)],
+)
+def test_destination_only_assets_quote_live(asset, dest):
+    # Item 3: BTC -> LTC/DOGE/BCH to an external address. Confirms the pool is
+    # live and the quoted memo actually pays the destination we asked for.
+    with ThorchainClient() as thor:
+        quote = thor.quote_swap(ASSET["BTC"], ASSET[asset], 5_000_000, dest)
+    assert quote.expected_amount_out > 0
+    assert quote.memo and dest in quote.memo

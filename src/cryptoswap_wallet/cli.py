@@ -19,6 +19,7 @@ import sys
 import time
 from pathlib import Path
 
+from cryptoswap_wallet.addresses import validate_destination_address
 from cryptoswap_wallet.keystore import HdKey, Keystore
 from cryptoswap_wallet.net import HTTP_ERRORS
 from cryptoswap_wallet.swap import SwapAborted, SwapRequest, execute_swap, prepare_swap
@@ -40,6 +41,10 @@ ASSET = {
     "TRX": "TRON.TRX",
     "USDT-TRON": "TRON.USDT-TR7NHQJEKQXGTCI8Q8ZY4PL8OTSZGJLJ6T",
     "USDT-ETH": "ETH.USDT-0XDAC17F958D2EE523A2206206994597C13D831EC7",
+    # Destination-only (no source/hold yet): pay an external --dest address.
+    "LTC": "LTC.LTC",
+    "DOGE": "DOGE.DOGE",
+    "BCH": "BCH.BCH",
 }
 
 
@@ -213,12 +218,15 @@ def cmd_balance(args: argparse.Namespace) -> int:
 
 
 def _derivable_chain(to_: str) -> str:
-    """The destination chain we can derive an address for (BTC/ETH/TRON)."""
+    """The destination chain prefix (BTC/ETH/TRON are derivable; others need --dest)."""
     return ASSET[to_].split(".", 1)[0]
 
 
 def _resolve_destination(args: argparse.Namespace, mnemonic: str | None) -> str | None:
     if args.dest:
+        problem = validate_destination_address(_derivable_chain(args.to_), args.dest)
+        if problem:
+            raise SystemExit(f"--dest: {problem}")
         return args.dest
     if mnemonic is None:
         return None

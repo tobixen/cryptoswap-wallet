@@ -29,7 +29,7 @@ override.
 | `address` | BTC, ETH, TRON | derived from the seed |
 | `quote` | any supported asset | read-only price preview |
 | `swap` (source) | BTC, ETH, TRX, USDT-ETH | the asset you spend |
-| `swap` (destination) | BTC, ETH, TRX, USDT-ETH, USDT-TRON | where funds land |
+| `swap` (destination) | BTC, ETH, TRX, USDT-ETH, USDT-TRON, LTC, DOGE, BCH | where funds land (LTC/DOGE/BCH need `--dest`) |
 | `send` (to external address) | BTC | plain transfer, no swap; ETH/TRX planned |
 | `add-liquidity` / `withdraw-liquidity` | BTC, ETH, TRX | single-sided, **experimental** |
 | `status` | all | track a swap by its inbound txid |
@@ -59,9 +59,9 @@ implementation order.
 | AVAX | Avalanche C-Chain | EVM | none | |
 | BASE | Base (ETH L2) | EVM | none | |
 | USDC | USD Coin (ETH/BSC/AVAX/BASE) | ERC-20 token | none | |
-| LTC | Litecoin | UTXO | none | |
-| DOGE | Dogecoin | UTXO | none | |
-| BCH | Bitcoin Cash | UTXO | none | |
+| LTC | Litecoin | UTXO | partial | destination only (via `--dest`) |
+| DOGE | Dogecoin | UTXO | partial | destination only (via `--dest`) |
+| BCH | Bitcoin Cash | UTXO | partial | destination only (via `--dest`) |
 | RUNE | THORChain native | THORChain | none | |
 | ATOM | Cosmos Hub | Cosmos | none | |
 | XRP | XRP Ledger | XRP | none | |
@@ -103,6 +103,9 @@ features yet.
 | USDT-ETH  |  ✅  |     |  ✅ |  ✅  |      |     |
 | TRX       |  ✅  |  ✅ |  ✅ |  ✅  |      |  ✅ |
 | USDT-TRON |  ✅  |     |  ✅ |      |      |     |
+| LTC       |      |     |  ✅ |      |      |     |
+| DOGE      |      |     |  ✅ |      |      |     |
+| BCH       |      |     |  ✅ |      |      |     |
 
 ## Usage
 
