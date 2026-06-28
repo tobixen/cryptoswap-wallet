@@ -183,6 +183,11 @@ def cmd_address(args: argparse.Namespace) -> int:
 
 
 def cmd_balance(args: argparse.Namespace) -> int:
+    print(
+        "checking balances (the BTC address scan can take ~10s)...",
+        file=sys.stderr,
+        flush=True,
+    )
     mnemonic = _load_mnemonic(args)
     for adapter in _wallet_adapters(args):
         with adapter:
