@@ -90,6 +90,7 @@ capability grid above for the per-feature detail.
 | ADA | Cardano | Cardano | none | Maya-only |
 | XMR | Monero | Monero | none | no live THORChain pool yet |
 | TCY | THORChain reward token | THORChain token | none | niche; low priority |
+| MAYA | Maya governance token | Maya token | none | Maya-only; niche; low priority |
 
 EVM is the recommended next family (most coverage, least risk); then UTXO. See
 `docs/TODO.md` for detail.
