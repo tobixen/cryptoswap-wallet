@@ -23,18 +23,36 @@ Swaps default to a **dry run** (build + verify + print); `--confirm` is required
 to broadcast. Destination addresses auto-derive from the seed; pass `--dest` to
 override.
 
-| Feature | Available for | Notes |
-|---|---|---|
-| `balance` | BTC, ETH, TRX | native balances + any THORChain/Maya liquidity positions (token balances not shown yet) |
-| `address` | BTC, ETH, TRON | derived from the seed |
-| `quote` | any supported asset | read-only price preview |
-| `swap` (source) | BTC, ETH, TRX, USDT-ETH | the asset you spend |
-| `swap` (destination) | BTC, ETH, TRX, USDT-ETH, USDT-TRON, LTC, DOGE, BCH | where funds land (LTC/DOGE/BCH need `--dest`) |
-| `send` (to external address) | BTC | plain transfer, no swap; ETH/TRX planned |
-| `add-liquidity` / `withdraw-liquidity` | BTC, ETH, TRX | single-sided, **experimental** |
-| `status` | all | track a swap by its inbound txid |
-| `--amount max` | BTC, ETH (source) | sweep the whole balance minus fees |
-| `--backend auto` | quote, swap | compares **THORChain + Maya** and routes to the best price |
+This is "current status" — most missing items are in the pipeline, prioritized
+by personal need and by issues/PRs received. Per-currency capabilities today
+(✅ = working, ◑ = partial, blank = not yet); currencies with **Support = none**
+under *Currency support* below have no features yet.
+
+| Currency  | Hold | Bal | To  | From | Send | Liq |
+|-----------|:----:|:---:|:---:|:----:|:----:|:---:|
+| BTC       |  ✅  |  ✅ |  ✅ |  ✅  |  ✅  |  ✅ |
+| ETH       |  ✅  |  ✅ |  ✅ |  ✅  |      |  ✅ |
+| USDT-ETH  |  ✅  |     |  ✅ |  ✅  |      |     |
+| TRX       |  ✅  |  ✅ |  ✅ |  ✅  |      |  ✅ |
+| USDT-TRON |  ✅  |     |  ✅ |      |      |     |
+| LTC       |      |     |  ✅ |      |      |     |
+| DOGE      |      |     |  ✅ |      |      |     |
+| BCH       |      |     |  ✅ |      |      |     |
+
+* **Hold** — derive an address, hold a balance, receive funds
+* **Bal**  — show the balance (native + any THORChain/Maya liquidity positions; token balances not shown yet)
+* **To**   — use as a swap *destination* (funds land here; LTC/DOGE/BCH need `--dest`)
+* **From** — use as a swap *source* (the asset you spend)
+* **Send** — send to an external address (a plain transfer, no swap)
+* **Liq**  — provide *single-sided* liquidity (experimental; see below)
+
+Not per-currency, so kept out of the grid:
+
+* `quote` — read-only price preview for any supported asset
+* `status` — track a swap by its inbound txid
+* `address` — print the derived BTC / ETH / TRON addresses
+* `--amount max` — sweep the whole balance minus fees (BTC, ETH source)
+* `--backend auto` — compares **THORChain + Maya** and routes to the best price (`quote`, `swap`)
 
 Swap backends are pluggable (`cryptoswap_wallet.backends`): THORChain and its
 fork **Maya** share the API/memo format, so `--backend auto` (default) quotes
@@ -42,11 +60,26 @@ both and picks the highest output. `quote` lists every backend's rate. (A
 trustless P2P backend like BasicSwap — privacy/XMR — would slot in here too, but
 it needs full nodes, so it's future work.)
 
+**Liquidity (experimental).** `add-liquidity` / `withdraw-liquidity` add or
+remove *single-sided* liquidity on a THORChain pool: you deposit the asset
+itself with a `+:POOL` memo, and later withdraw a fraction with `-:POOL:<bps>`.
+In return you earn a share of that pool's swap fees — but you take on impermanent
+loss and exposure to the RUNE side of the pool, so it is neither a swap nor
+risk-free yield. BTC, ETH and TRX are wired up. Note that THORChain frequently
+pauses LP deposits network-wide (`PAUSELP` in mimir); when it does, an add would
+be refunded minus gas, so `add-liquidity` checks this first and aborts rather
+than waste the round-trip fee. Withdrawals stay open so you can always exit.
+
+`add-liquidity --backend maya` LPs on the Maya fork instead (default
+`thorchain`). Maya's LP is often open when THORChain's is paused — but Maya pairs
+with **CACAO** (not RUNE), has a different pool set, and has **no TRON pool**, so
+only its supported assets (e.g. BTC, ETH) work there.
+
 ## Currency support
 
 Reach is bounded by THORChain's pools. **Support**: full = most features
 working, partial = some features working, none = planned. Listed in recommended
-implementation order.
+implementation order; see the capability grid above for the per-feature detail.
 
 | Currency | What it is | Family | Support | Notes |
 |---|---|---|:--:|---|
@@ -71,49 +104,6 @@ implementation order.
 
 EVM is the recommended next family (most coverage, least risk); then UTXO. See
 `docs/TODO.md` for detail.
-
-### Per-feature support
-
-Remember that this is "current status".  Most of the missing items is in the pipeline - but I will probably prioritize according to my personal needs and/or issues raised / pull requests received.
-
-Features:
-
-* **Hold** — derive an address, hold a balance, receive funds
-* **Bal**  — show the balance
-* **To**   — use as a swap *destination* (funds land here)
-* **From** — use as a swap *source* (the asset you spend)
-* **Send** — send to an external address (a plain transfer, no swap)
-* **Liq**  — provide liquidity (see below)
-
-**Liquidity (experimental).** `add-liquidity` / `withdraw-liquidity` add or
-remove *single-sided* liquidity on a THORChain pool: you deposit the asset
-itself with a `+:POOL` memo, and later withdraw a fraction with `-:POOL:<bps>`.
-In return you earn a share of that pool's swap fees — but you take on impermanent
-loss and exposure to the RUNE side of the pool, so it is neither a swap nor
-risk-free yield. BTC, ETH and TRX are wired up. Note that THORChain frequently
-pauses LP deposits network-wide (`PAUSELP` in mimir); when it does, an add would
-be refunded minus gas, so `add-liquidity` checks this first and aborts rather
-than waste the round-trip fee. Withdrawals stay open so you can always exit.
-
-`add-liquidity --backend maya` LPs on the Maya fork instead (default
-`thorchain`). Maya's LP is often open when THORChain's is paused — but Maya pairs
-with **CACAO** (not RUNE), has a different pool set, and has **no TRON pool**, so
-only its supported assets (e.g. BTC, ETH) work there.
-
-What works for the currencies with any support today. ✅ = working, ◑ =
-partial, blank = not yet. Currencies with **Support = none** above support no
-features yet.
-
-| Currency  | Hold | Bal | To  | From | Send | Liq |
-|-----------|:----:|:---:|:---:|:----:|:----:|:---:|
-| BTC       |  ✅  |  ✅ |  ✅ |  ✅  |  ✅  |  ✅ |
-| ETH       |  ✅  |  ✅ |  ✅ |  ✅  |      |  ✅ |
-| USDT-ETH  |  ✅  |     |  ✅ |  ✅  |      |     |
-| TRX       |  ✅  |  ✅ |  ✅ |  ✅  |      |  ✅ |
-| USDT-TRON |  ✅  |     |  ✅ |      |      |     |
-| LTC       |      |     |  ✅ |      |      |     |
-| DOGE      |      |     |  ✅ |      |      |     |
-| BCH       |      |     |  ✅ |      |      |     |
 
 ## Usage
 
