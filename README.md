@@ -26,16 +26,16 @@ pass `--dest` to override.
 
 The wallet is still under rapid development as of 2026-06-29.  Missing features and currency support will be prioritized by personal need and by issues/PRs received.  Here is the "current status" of (partially) supported currencies (✅ = working, ◑ = partial, blank = not yet):
 
-| Currency  | Hold | Bal | To  | From | Send | Liq |
-|-----------|:----:|:---:|:---:|:----:|:----:|:---:|
-| BTC       |  ✅  |  ✅ |  ✅ |  ✅  |  ✅  |  ✅ |
-| ETH       |  ✅  |  ✅ |  ✅ |  ✅  |      |  ✅ |
-| USDT-ETH  |  ✅  |     |  ✅ |  ✅  |      |     |
-| TRX       |  ✅  |  ✅ |  ✅ |  ✅  |      |  ✅ |
-| USDT-TRON |  ✅  |     |  ✅ |      |      |     |
-| LTC       |      |     |  ✅ |      |      |     |
-| DOGE      |      |     |  ✅ |      |      |     |
-| BCH       |      |     |  ✅ |      |      |     |
+| Currency  | Hold | Bal | To  | From | Send | Sweep | Liq |
+|-----------|:----:|:---:|:---:|:----:|:----:|:-----:|:---:|
+| BTC       |  ✅  |  ✅ |  ✅ |  ✅  |  ✅  |  ✅  |  ✅ |
+| ETH       |  ✅  |  ✅ |  ✅ |  ✅  |      |  ◑   |  ✅ |
+| USDT-ETH  |  ✅  |     |  ✅ |  ✅  |      |      |     |
+| TRX       |  ✅  |  ✅ |  ✅ |  ✅  |      |      |  ✅ |
+| USDT-TRON |  ✅  |     |  ✅ |      |      |      |     |
+| LTC       |      |     |  ✅ |      |      |      |     |
+| DOGE      |      |     |  ✅ |      |      |      |     |
+| BCH       |      |     |  ✅ |      |      |      |     |
 
 ### Features explained
 
@@ -44,14 +44,14 @@ The wallet is still under rapid development as of 2026-06-29.  Missing features 
 * **To**   — use as a `swap` *destination* (for a currency whose address the wallet can't derive yet, give an external one via `--dest`)
 * **From** — use as a `swap` *source* (the asset you spend)
 * **Send** — `send` to an external address (a plain transfer, no swap)
+* **Sweep** — `--amount max` empties the balance (✅ = exact, wallet ends at 0; ◑ = small reserve/dust is left behind because the real fee is only known at sending time)
 * **Liq**  — `add-liquidity` and `withdraw-liquidity` can be used to provide/withdraw *single-sided* liquidity (experimental; see below).
 
 Other features:
 
 * `quote` — read-only price preview for any supported asset
 * `status` — track a swap by its inbound txid
-* `address` — print the derived BTC / ETH / TRON addresses
-* `--amount max` — sweep the whole balance minus fees (BTC, ETH source)
+* `--amount max` — sweep the balance minus fees (BTC: exact; ETH source: minus a worst-case gas reserve, see the **Sweep** column)
 * `--backend auto` — compares **THORChain + Maya** and routes to the best price (`quote`, `swap`) for currencies supported by both backends.  (Other backends may be considered in the future)
 
 **Liquidity (experimental).** `add-liquidity` / `withdraw-liquidity` add or
@@ -95,6 +95,7 @@ capability grid above for the per-feature detail.
 ## Usage
 
 ```sh
+cryptoswap-wallet --help                              # subcmd --help also works
 cryptoswap-wallet init                                # create encrypted keystore
 cryptoswap-wallet add-hd --label main                 # import seed (prompted), or:
 cryptoswap-wallet add-hd --label test --generate      # generate a fresh seed

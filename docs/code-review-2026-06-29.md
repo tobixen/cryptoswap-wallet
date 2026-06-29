@@ -1,6 +1,6 @@
 # Code Review — 2026-06-29
 
-**Effort:** xhigh · **Scope:** full current-branch diff (`git diff @{upstream}...HEAD`)
+**Effort:** xhigh · **Scope:** full current-branch diff (`git diff @{upstream}...HEAD`) (human comment: that was NOT the scope I asked for ... lots of tokens disappeared reviewing some silly infrastructure work?  damn ...)
 **Changed files (9):** `src/cryptoswap_wallet/cli.py`, `pyproject.toml`, `uv.lock`, `.pre-commit-config.yaml`, `.github/workflows/linkcheck.yml`, `lychee.toml`, `Makefile`, `README.md`, `.gitignore`
 
 ## Summary
