@@ -44,15 +44,15 @@ The wallet is still under rapid development as of 2026-06-29.  Missing features 
 * **To**   — use as a `swap` *destination* (for a currency whose address the wallet can't derive yet, give an external one via `--dest`)
 * **From** — use as a `swap` *source* (the asset you spend)
 * **Send** — `send` to an external address (a plain transfer, no swap)
-* **Sweep** — `--amount max` empties the balance (✅ = exact, wallet ends at 0; ◑ = small reserve/dust is left behind because the real fee is only known at sending time)
+* **Sweep** — `--amount max` sends the maximum aomunt (✅ = exact, wallet ends at 0; ◑ = small fee reserve/dust is left behind because the real fee is only known at sending time)
 * **Liq**  — `add-liquidity` and `withdraw-liquidity` can be used to provide/withdraw *single-sided* liquidity (experimental; see below).
 
 Other features:
 
 * `quote` — read-only price preview for any supported asset
 * `status` — track a swap by its inbound txid
-* `--amount max` — sweep the balance minus fees (BTC: exact; ETH source: minus a worst-case gas reserve, see the **Sweep** column)
 * `--backend auto` — compares **THORChain + Maya** and routes to the best price (`quote`, `swap`) for currencies supported by both backends.  (Other backends may be considered in the future)
+* Transaction listings are not supported yet.
 
 **Liquidity (experimental).** `add-liquidity` / `withdraw-liquidity` add or
 remove *single-sided* liquidity on a THORChain pool.  By adding liquidity one will earn a share of that pool's swap fees, but it's not without risks.  As of 2026-06-28 THORChain rejects new liquidity for all assets, probably due to a switch to protocol-owned liquidity (POL).  It's still possible to use `add-liquidity --backend maya`.  For bigger amounts, *double-sided* liquidity should be used rather than single-sided liquidity, but this is not supported yet.
@@ -69,10 +69,12 @@ capability grid above for the per-feature detail.
 |---|---|---|:--:|---|
 | BTC | Bitcoin | UTXO | full | |
 | ETH | Ethereum | EVM | partial | no `send` yet |
-| USDT-ETH | Tether | ERC-20 token | partial | no `send`/`balance`/liquidity yet |
 | TRX | TRON | TRON | partial | no `send` yet |
-| USDT-TRON | Tether | TRC-20 token | partial | |
 | BSC / BNB | BNB Smart Chain | EVM | none | |
+| USDT-ETH | Tether | ERC-20 token | partial | no `send`/`balance`/liquidity yet |
+| USDT-TRON | Tether | TRC-20 token | partial | |
+| USDT-BSC | Tether | ? | none | Currently halted on THORChain.  Available on Maya |
+| USBT-SOL | Tether | ? | none | Not currently available on THORChain/Maya |
 | AVAX | Avalanche C-Chain | EVM | none | |
 | BASE | Base (ETH L2) | EVM | none | |
 | ARB | Arbitrum (ETH L2) | EVM | none | Maya-only |
@@ -88,7 +90,7 @@ capability grid above for the per-feature detail.
 | XRP | XRP Ledger | XRP | none | |
 | SOL | Solana | Solana | none | |
 | ADA | Cardano | Cardano | none | Maya-only |
-| XMR | Monero | Monero | none | no live THORChain pool yet |
+| XMR | Monero | Monero | none | Coming soon to THORChain pool |
 | TCY | THORChain reward token | THORChain token | none | niche; low priority |
 | MAYA | Maya governance token | Maya token | none | Maya-only; niche; low priority |
 
