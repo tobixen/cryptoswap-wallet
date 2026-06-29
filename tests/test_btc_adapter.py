@@ -76,6 +76,27 @@ def test_signs_multiple_inputs_across_paths():
     assert built.tx.verify() is True
 
 
+def test_sign_refuses_a_half_signed_tx():
+    # M3: if the signer leaves an input unsigned (e.g. a key didn't match and
+    # fail_on_unknown_key swallowed it), sign() must refuse rather than emit a
+    # tx that only gets rejected at broadcast. Simulate by no-op'ing the signer.
+    a = BtcAdapter()
+    utxos = [
+        Utxo(txid="aa" * 32, vout=0, value=200000, address=EXPECTED_ADDR, path=PATH)
+    ]
+    built = a.build_unsigned_swap(
+        mnemonic=MNEMONIC,
+        utxos=utxos,
+        vault_address=VAULT,
+        amount=150000,
+        memo=MEMO,
+        fee_rate=2,
+    )
+    built.tx.sign = lambda *args, **kwargs: None  # signer does nothing
+    with pytest.raises(RuntimeError, match="unsigned"):
+        a.sign(built)
+
+
 def test_generate_mnemonic_is_usable():
     from cryptoswap_wallet.chains.btc import generate_mnemonic
 

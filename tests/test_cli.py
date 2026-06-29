@@ -27,6 +27,20 @@ def test_swap_amount_max_parses():
     assert args.amount == "max"
 
 
+@pytest.mark.parametrize("bad", ["0", "-1", "-0.5", "nan", "inf"])
+def test_swap_rejects_nonpositive_or_nonfinite_amount(bad):
+    # L2: reject amount <= 0 (and nan/inf) at parse time, not deep in a handler.
+    with pytest.raises(SystemExit):
+        build_parser().parse_args(["swap", "--amount", bad])
+
+
+def test_add_liquidity_rejects_zero_amount():
+    with pytest.raises(SystemExit):
+        build_parser().parse_args(
+            ["add-liquidity", "--asset", "BTC", "--amount", "0"]
+        )
+
+
 def test_swap_amount_numeric_parses():
     args = build_parser().parse_args(["swap", "--amount", "0.001"])
     assert args.amount == 0.001

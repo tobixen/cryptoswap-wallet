@@ -171,6 +171,18 @@ class BtcAdapter(HttpClient):
         # Each input carries its own key; a given key signs only the input(s) it
         # matches, so don't error on the non-matching ones.
         built.tx.sign(built.keys, fail_on_unknown_key=False)
+        # M3: with fail_on_unknown_key=False a missing/mismatched key leaves an
+        # input silently unsigned; catch that here rather than at broadcast.
+        unsigned = [i for i, inp in enumerate(built.tx.inputs) if not inp.signatures]
+        if unsigned:
+            raise RuntimeError(
+                f"refusing to broadcast: BTC inputs {unsigned} left unsigned "
+                "(no matching key)"
+            )
+        if not built.tx.verify():
+            raise RuntimeError(
+                "refusing to broadcast: BTC tx failed signature verification"
+            )
         return [built.tx.raw_hex()]
 
     def build_and_verify(

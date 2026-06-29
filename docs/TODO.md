@@ -93,11 +93,13 @@ Done: A1 (shared niquests `HttpClient`), M2 (fee fallback → max), L1 (fail-clo
 UTXOs), H1 (atomic keystore write), M1 (memo-pays-destination check), A4 (one
 `prepare_swap`; adapters own `build_and_verify`; single `SwapSource` protocol).
 
+Done (continued): **M3** — `BtcAdapter.sign` now refuses a half-signed tx
+(asserts every input carries a signature and `tx.verify()` passes) instead of
+relying on broadcast rejection. **L2** — `_amount` rejects `<= 0` (and nan/inf)
+at parse time, so no handler re-checks and a typo fails fast at the CLI.
+
 Still open:
 
-- **M3** — after BTC `sign`, assert every input is actually signed (don't rely on
-  broadcast rejection).
-- **L2** — reject `amount <= 0` at parse time.
 - **A2/A3** — share the EVM key derivation + `to_checksum`/keccak helpers between
   ETH and TRON; default `wallet_balance` on an account-model base.
 - **A5** — table-drive the CLI per-chain factories / `_resolve_destination` /

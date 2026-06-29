@@ -14,6 +14,7 @@ import argparse
 import dataclasses
 import getpass
 import json
+import math
 import os
 import sys
 import time
@@ -913,8 +914,19 @@ def cmd_status(args: argparse.Namespace) -> int:
 
 
 def _amount(value: str) -> float | str:
-    """Parse a swap amount: a number, or the literal 'max' to sweep the balance."""
-    return "max" if value.lower() == "max" else float(value)
+    """Parse a swap amount: a positive number, or the literal 'max' to sweep.
+
+    Rejecting ``<= 0`` (and nan/inf) here means no handler has to re-check, and a
+    typo'd or zero amount fails fast at the CLI rather than building a bad tx.
+    """
+    if value.lower() == "max":
+        return "max"
+    amount = float(value)
+    if not math.isfinite(amount) or amount <= 0:
+        raise argparse.ArgumentTypeError(
+            f"amount must be a positive number or 'max', got {value!r}"
+        )
+    return amount
 
 
 def _add_swap_args(sub: argparse.ArgumentParser) -> None:
