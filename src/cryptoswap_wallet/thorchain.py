@@ -188,9 +188,8 @@ class LiquidityPosition:
         if protocol_price_in_asset is not None and (
             self.asset_deposit_value or self.protocol_deposit_value
         ):
-            deposited = (
-                self.asset_deposit_value / THORCHAIN_UNIT
-                + in_asset(self.protocol_deposit_value)
+            deposited = self.asset_deposit_value / THORCHAIN_UNIT + in_asset(
+                self.protocol_deposit_value
             )
             extras.append(f"deposited ~{deposited:.8f}")
         if self.pending_asset:
@@ -330,9 +329,7 @@ class ThorchainClient(HttpClient):
         resp.raise_for_status()
         return resp.json()
 
-    def liquidity_provider(
-        self, pool: str, address: str
-    ) -> LiquidityPosition | None:
+    def liquidity_provider(self, pool: str, address: str) -> LiquidityPosition | None:
         """``address``'s LP position in ``pool``, or ``None`` if it has none.
 
         A pool this backend doesn't run (e.g. ``TRON.TRX`` on Maya) 404s; treat

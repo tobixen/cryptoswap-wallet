@@ -36,9 +36,7 @@ def test_swap_rejects_nonpositive_or_nonfinite_amount(bad):
 
 def test_add_liquidity_rejects_zero_amount():
     with pytest.raises(SystemExit):
-        build_parser().parse_args(
-            ["add-liquidity", "--asset", "BTC", "--amount", "0"]
-        )
+        build_parser().parse_args(["add-liquidity", "--asset", "BTC", "--amount", "0"])
 
 
 def test_swap_amount_numeric_parses():
