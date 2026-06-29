@@ -1,4 +1,4 @@
-# cryptoswap
+# cryptoswap wallet
 
 A python/CLI multi-currency wallet that may do non-custodial cross-chain swaps via [THORChain](https://thorchain.org/).
 
