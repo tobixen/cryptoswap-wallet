@@ -39,6 +39,9 @@ TRX_DECIMALS = 6
 THORCHAIN_UNITS_PER_SUN = 100
 _B58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
 
+# TRC-20 tokens the wallet tracks for `balance` (symbol, contract base58, decimals).
+TRACKED_TOKENS = (("USDT", "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t", 6),)
+
 Account.enable_unaudited_hdwallet_features()
 
 
@@ -120,6 +123,43 @@ class TronAdapter(HttpClient):
             note=f"({address})",
             addresses=(address,),
         )
+
+    def fetch_token_balance(self, contract: str, address: str) -> int:
+        """TRC-20 ``balanceOf(address)`` in the token's native units (keyless call).
+
+        Uses the standard java-tron read-only ``/wallet/triggerconstantcontract``
+        route. The owner is ABI-encoded as its 20-byte EVM form left-padded to 32
+        bytes; an empty/failed call decodes as zero.
+        """
+        from tronpy.keys import to_hex_address
+
+        owner_param = to_hex_address(address)[2:].rjust(64, "0")
+        resp = self._post(
+            f"{self.api_url}/wallet/triggerconstantcontract",
+            json={
+                "owner_address": address,
+                "contract_address": contract,
+                "function_selector": "balanceOf(address)",
+                "parameter": owner_param,
+                "visible": True,
+            },
+        )
+        resp.raise_for_status()
+        results = resp.json().get("constant_result") or []
+        return int(results[0], 16) if results else 0
+
+    def token_balances(self, mnemonic: str) -> list[BalanceReport]:
+        """TRC-20 balances (e.g. USDT-TRON) at the wallet's Tron address."""
+        address = self.derive_address(mnemonic)
+        return [
+            BalanceReport(
+                symbol=f"{symbol}-TRON",
+                confirmed=self.fetch_token_balance(contract, address),
+                decimals=decimals,
+                addresses=(address,),
+            )
+            for symbol, contract, decimals in TRACKED_TOKENS
+        ]
 
     # --- spending FROM Tron (swap source + liquidity deposit) ---------------
 

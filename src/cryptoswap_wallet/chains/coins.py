@@ -100,6 +100,20 @@ def sweep_amount(
     return send, fee
 
 
+def token_sweep_amount(balance: int, decimals: int) -> int:
+    """THORChain 1e8 amount that sends an entire token ``balance``.
+
+    ``balance`` is in the token's native base units (``decimals`` of them per
+    whole token). Unlike a UTXO/native sweep, a token sweep is *exact*: gas is
+    paid in the chain's native coin, not the token, so the whole balance goes
+    out. Raises :class:`InsufficientFunds` if there is nothing to sweep.
+    """
+    amount = balance * 10**8 // 10**decimals
+    if amount <= 0:
+        raise InsufficientFunds(f"token balance {balance} too small to sweep")
+    return amount
+
+
 def select_coins(
     utxos: list[Utxo],
     send_amount: int,

@@ -11,6 +11,7 @@ from cryptoswap_wallet.chains.coins import (
     encode_op_return,
     estimate_vsize,
     select_coins,
+    token_sweep_amount,
 )
 
 
@@ -91,3 +92,19 @@ def test_select_folds_sub_dust_change_into_fee():
     assert sel.change == 0
     assert sel.fee == 262
     assert sum(x.value for x in sel.utxos) == 100000 + sel.fee
+
+
+# --- token sweep (1e8 amount for the whole token balance) ---
+
+
+def test_token_sweep_amount_converts_native_to_1e8():
+    # 2.5 USDT (6 decimals) -> 2.5 in THORChain 1e8 units. The token sweep is
+    # exact: gas is paid in the chain's native coin, not the token.
+    assert token_sweep_amount(2_500_000, 6) == 250_000_000
+    # 8-decimal token round-trips 1:1 with the 1e8 unit.
+    assert token_sweep_amount(123, 8) == 123
+
+
+def test_token_sweep_amount_rejects_empty_balance():
+    with pytest.raises(InsufficientFunds):
+        token_sweep_amount(0, 6)

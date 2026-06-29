@@ -30,9 +30,9 @@ The wallet is still under rapid development as of 2026-06-29.  Missing features 
 |-----------|:----:|:---:|:---:|:----:|:----:|:-----:|:---:|
 | BTC       |  ✅  |  ✅ |  ✅ |  ✅  |  ✅  |  ✅  |  ✅ |
 | ETH       |  ✅  |  ✅ |  ✅ |  ✅  |      |  ◑   |  ✅ |
-| USDT-ETH  |  ✅  |     |  ✅ |  ✅  |      |      |     |
+| USDT-ETH  |  ✅  |  ✅ |  ✅ |  ✅  |      |  ✅  |     |
 | TRX       |  ✅  |  ✅ |  ✅ |  ✅  |      |      |  ✅ |
-| USDT-TRON |  ✅  |     |  ✅ |      |      |      |     |
+| USDT-TRON |  ✅  |  ✅ |  ✅ |      |      |      |     |
 | LTC       |      |     |  ✅ |      |      |      |     |
 | DOGE      |      |     |  ✅ |      |      |      |     |
 | BCH       |      |     |  ✅ |      |      |      |     |
@@ -40,11 +40,11 @@ The wallet is still under rapid development as of 2026-06-29.  Missing features 
 ### Features explained
 
 * **Hold** — derive an `address`, hold a balance, receive funds
-* **Bal**  — show the `balance` (native + any THORChain/Maya liquidity positions; token balances not shown yet)
+* **Bal**  — show the `balance` (native, tracked tokens like USDT, and any THORChain/Maya liquidity positions)
 * **To**   — use as a `swap` *destination* (for a currency whose address the wallet can't derive yet, give an external one via `--dest`)
 * **From** — use as a `swap` *source* (the asset you spend)
 * **Send** — `send` to an external address (a plain transfer, no swap)
-* **Sweep** — `--amount max` sends the maximum aomunt (✅ = exact, wallet ends at 0; ◑ = small fee reserve/dust is left behind because the real fee is only known at sending time)
+* **Sweep** — `--amount max` sends the maximum amount (✅ = exact, wallet ends at 0 — also the case for tokens, whose gas is paid in the native coin; ◑ = small fee reserve/dust is left behind because the real fee is only known at sending time)
 * **Liq**  — `add-liquidity` and `withdraw-liquidity` can be used to provide/withdraw *single-sided* liquidity (experimental; see below).
 
 Other features:
@@ -71,8 +71,8 @@ capability grid above for the per-feature detail.
 | ETH | Ethereum | EVM | partial | no `send` yet |
 | TRX | TRON | TRON | partial | no `send` yet |
 | BSC / BNB | BNB Smart Chain | EVM | none | |
-| USDT-ETH | Tether | ERC-20 token | partial | no `send`/`balance`/liquidity yet |
-| USDT-TRON | Tether | TRC-20 token | partial | |
+| USDT-ETH | Tether | ERC-20 token | partial | no `send`/liquidity yet |
+| USDT-TRON | Tether | TRC-20 token | partial | no `swap`-from/`send` yet (TRC-20 deposit) |
 | USDT-BSC | Tether | ? | none | Currently halted on THORChain.  Available on Maya |
 | USBT-SOL | Tether | ? | none | Not currently available on THORChain/Maya |
 | AVAX | Avalanche C-Chain | EVM | none | |

@@ -75,6 +75,38 @@ def test_eth_sweep_amount_insufficient():
         eth_sweep_amount(1000, gas=60000, max_fee_per_gas=20_000_000_000)
 
 
+def test_erc20_fetch_token_balance_encodes_and_decodes(monkeypatch):
+    adapter = EthAdapter()
+    captured = {}
+
+    def fake_rpc(method, params):
+        captured["method"] = method
+        captured["params"] = params
+        return "0x" + (1_234_567).to_bytes(32, "big").hex()
+
+    monkeypatch.setattr(adapter, "_rpc", fake_rpc)
+    token = "0xdAC17F958D2ee523a2206206994597C13D831ec7"
+    owner = "0x9858EfFD232B4033E47d90003D41EC34EcaEda94"
+    assert adapter.fetch_token_balance(token, owner) == 1_234_567
+    assert captured["method"] == "eth_call"
+    call = captured["params"][0]
+    assert call["to"].lower() == token.lower()
+    # balanceOf(address) selector + the 20-byte owner left-padded to 32 bytes.
+    assert call["data"] == "0x70a08231" + "0" * 24 + owner[2:].lower()
+
+
+def test_eth_token_balances_reports_usdt(monkeypatch):
+    adapter = EthAdapter()
+    monkeypatch.setattr(
+        adapter, "fetch_token_balance", lambda token, address: 2_500_000
+    )
+    reports = adapter.token_balances(MNEMONIC)
+    assert [r.symbol for r in reports] == ["USDT-ETH"]
+    assert reports[0].decimals == 6
+    assert reports[0].confirmed == 2_500_000
+    assert reports[0].format().startswith("USDT-ETH: 2.50")
+
+
 def test_eth_build_and_verify_clean():
     from cryptoswap_wallet.swap import SwapRequest
     from cryptoswap_wallet.thorchain import Quote, SwapFees
@@ -236,3 +268,13 @@ def test_eth_token_verify_rejects_swapped_vault_token():
         built=built, destination="bc1qexampledest", now=0, max_fee_wei=10**18
     )
     assert problems
+
+
+@pytest.mark.network
+def test_eth_token_balance_live():
+    """Live ERC-20 balanceOf against the public RPC — guards the call encoding
+    and decoding against drift. Asserts shape, not an exact (mutable) balance."""
+    reports = EthAdapter().token_balances(MNEMONIC)
+    assert [r.symbol for r in reports] == ["USDT-ETH"]
+    assert reports[0].decimals == 6
+    assert reports[0].confirmed >= 0

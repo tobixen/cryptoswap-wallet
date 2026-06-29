@@ -68,6 +68,54 @@ def test_swap_from_eth_parses():
     assert args.to_ == "BTC"
 
 
+def test_swap_from_eth_token_sweep_uses_full_token_balance(monkeypatch):
+    """`--amount max` for an ERC-20 source sweeps the whole balanceOf (gas is
+    paid in ETH, so the token amount is exact) — it must no longer be rejected."""
+    import cryptoswap_wallet.cli as cli
+    from cryptoswap_wallet.swap import SwapAborted
+
+    class FakeAdapter:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def derive_address(self, mnemonic):
+            return "0x9858EfFD232B4033E47d90003D41EC34EcaEda94"
+
+        def get_nonce(self, address):
+            return 0
+
+        def fetch_fees(self):
+            return (20_000_000_000, 1_000_000_000)
+
+        def fetch_token_balance(self, token, address):
+            return 2_500_000  # 2.5 USDT (6 decimals)
+
+        def token_decimals(self, token):
+            return 6
+
+    monkeypatch.setattr(cli, "_load_mnemonic", lambda args: "mnemonic")
+    monkeypatch.setattr(cli, "_resolve_destination", lambda args, m: "bc1qdest")
+    monkeypatch.setattr(cli, "_eth_adapter", lambda args: FakeAdapter())
+
+    captured = {}
+
+    def fake_select_backend(args, *, from_asset, to_asset, amount, destination):
+        captured["amount"] = amount
+        raise SwapAborted("captured")  # short-circuit before any network/quote
+
+    monkeypatch.setattr(cli, "_select_backend", fake_select_backend)
+
+    args = build_parser().parse_args(
+        ["swap", "--from", "USDT-ETH", "--to", "BTC", "--amount", "max"]
+    )
+    rc = cli._swap_from_eth(args)
+    assert rc == 1  # aborted via our stub, not the old "not supported" rejection
+    assert captured["amount"] == 250_000_000  # 2.5 USDT in THORChain 1e8 units
+
+
 def test_swap_eth_rpc_flag_parses():
     args = build_parser().parse_args(
         ["swap", "--from", "ETH", "--amount", "0.01", "--eth-rpc", "https://x.example"]

@@ -43,13 +43,16 @@ DEPOSIT_SELECTOR = (
     "44bc937b"  # depositWithExpiry(address,address,uint256,string,uint256)
 )
 DECIMALS_SELECTOR = "313ce567"  # decimals()
+BALANCEOF_SELECTOR = "70a08231"  # balanceOf(address)
 APPROVE_GAS = 70000
 TOKEN_DEPOSIT_GAS = 200000
 
-# Known token decimals — don't trust an RPC value that determines how much we send.
-KNOWN_TOKEN_DECIMALS = {
-    "0xdac17f958d2ee523a2206206994597c13d831ec7": 6,  # ETH USDT
-}
+# ERC-20 tokens the wallet tracks for `balance` (symbol, contract, decimals).
+TRACKED_TOKENS = (("USDT", "0xdac17f958d2ee523a2206206994597c13d831ec7", 6),)
+
+# Known token decimals — don't trust an RPC value that determines how much we
+# send. Derived from TRACKED_TOKENS so the contract address is listed once.
+KNOWN_TOKEN_DECIMALS = {contract: decimals for _, contract, decimals in TRACKED_TOKENS}
 
 Account.enable_unaudited_hdwallet_features()
 
@@ -278,6 +281,25 @@ class EthAdapter(HttpClient):
             note=f"({address})",
             addresses=(address,),
         )
+
+    def fetch_token_balance(self, token: str, address: str) -> int:
+        """ERC-20 ``balanceOf(address)`` in the token's native units."""
+        owner = to_checksum_address(address)[2:].lower()
+        data = "0x" + BALANCEOF_SELECTOR + owner.rjust(64, "0")
+        return int(self._rpc("eth_call", [{"to": token, "data": data}, "latest"]), 16)
+
+    def token_balances(self, mnemonic: str) -> list[BalanceReport]:
+        """ERC-20 balances (e.g. USDT-ETH) at the wallet's ETH address."""
+        address = self.derive_address(mnemonic)
+        return [
+            BalanceReport(
+                symbol=f"{symbol}-ETH",
+                confirmed=self.fetch_token_balance(contract, address),
+                decimals=decimals,
+                addresses=(address,),
+            )
+            for symbol, contract, decimals in TRACKED_TOKENS
+        ]
 
     def fetch_fees(self) -> tuple[int, int]:
         """Return ``(max_fee_per_gas, max_priority_fee_per_gas)`` in wei."""

@@ -14,12 +14,15 @@ automatically from git tags (PEP 440 / SemVer).
   TRON (address + balance).
 - Swaps: BTC, ETH (native), TRX (native) and USDT-ETH (ERC-20) as sources; BTC,
   ETH, TRX, USDT-TRON, USDT-ETH and (external-`--dest`-only) LTC, DOGE, BCH as
-  destinations. `--amount max` sweep for BTC/ETH (swap and add-liquidity). TRX
+  destinations. `--amount max` sweep for BTC/ETH (swap and add-liquidity) and
+  for ERC-20 token sources like USDT-ETH (swap; the whole token balance, exact
+  since gas is paid in ETH). TRX
   source signs a native
   TransferContract with the memo in tx data (tronpy), via a keyless public node.
 - Permissive `--dest` sanity check (network/format) to catch gross typos before
   a swap is quoted or broadcast.
-- Registry-based multi-chain `balance` (now also reports THORChain/Maya
+- Registry-based multi-chain `balance` (native coins plus tracked ERC-20/TRC-20
+  token balances — USDT-ETH and USDT-TRON; now also reports THORChain/Maya
   liquidity positions: total redeemable value in the asset — the RUNE/CACAO side
   of a position is converted at the pool price and folded in, not added raw —
   plus any pending); `quote`, `status`, `address`.

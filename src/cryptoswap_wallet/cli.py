@@ -242,10 +242,29 @@ def cmd_balance(args: argparse.Namespace) -> int:
                     continue
                 print(report.format())
                 _report_liquidity(backends, adapter.asset, report.addresses)
+                _report_token_balances(adapter, mnemonic)
     finally:
         for backend in backends:
             backend.client.close()
     return 0
+
+
+def _report_token_balances(adapter, mnemonic: str) -> None:  # noqa: ANN001 (ChainAdapter)
+    """Print any ERC-20/TRC-20 token balances the adapter tracks (e.g. USDT).
+
+    Token balances are separate network calls from the native balance, so a
+    failure here is reported but does not sink the rest of the `balance` output.
+    """
+    token_balances = getattr(adapter, "token_balances", None)
+    if token_balances is None:
+        return
+    try:
+        reports = token_balances(mnemonic)
+    except (*HTTP_ERRORS, RuntimeError, KeyError, ValueError, IndexError) as exc:
+        print(f"{adapter.chain}: token balances unavailable ({exc})", file=sys.stderr)
+        return
+    for report in reports:
+        print(report.format())
 
 
 def _report_liquidity(
@@ -565,7 +584,10 @@ def _swap_from_btc(args: argparse.Namespace) -> int:
 
 
 def _swap_from_eth(args: argparse.Namespace) -> int:
-    from cryptoswap_wallet.chains.coins import InsufficientFunds
+    from cryptoswap_wallet.chains.coins import (
+        InsufficientFunds,
+        token_sweep_amount,
+    )
     from cryptoswap_wallet.chains.eth import eth_sweep_amount
 
     mnemonic = _load_mnemonic(args)
@@ -577,9 +599,6 @@ def _swap_from_eth(args: argparse.Namespace) -> int:
     from_asset = ASSET[args.from_]
     is_token = "-" in from_asset
     sweep = args.amount == "max"
-    if sweep and is_token:
-        print("--amount max is not supported for token sources yet", file=sys.stderr)
-        return 2
     if is_token:
         _warn(
             "token source — 2 transactions (approve + deposit):",
@@ -590,7 +609,19 @@ def _swap_from_eth(args: argparse.Namespace) -> int:
         from_address = adapter.derive_address(mnemonic)
         nonce = adapter.get_nonce(from_address)
         max_fee_per_gas, max_priority_fee_per_gas = adapter.fetch_fees()
-        if sweep:
+        if sweep and is_token:
+            # A token sweep sends the whole balanceOf — gas is paid in ETH, not
+            # the token, so the amount is exact.
+            token = from_asset.split("-", 1)[1]
+            try:
+                amount = token_sweep_amount(
+                    adapter.fetch_token_balance(token, from_address),
+                    adapter.token_decimals(token),
+                )
+            except InsufficientFunds as exc:
+                print(f"ABORTED: {exc}", file=sys.stderr)
+                return 1
+        elif sweep:
             try:
                 amount = eth_sweep_amount(
                     adapter.fetch_balance(from_address),

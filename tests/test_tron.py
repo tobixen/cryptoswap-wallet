@@ -65,6 +65,67 @@ def test_fetch_balance_zero_for_account_without_balance_field(monkeypatch):
     assert adapter.fetch_balance("TUEZSdKsoDHQMeZwihtdoBiN46zxhGWYdH") == 0
 
 
+# --- TRC-20 token balance (USDT-TRON) ---
+
+
+def test_trc20_fetch_token_balance_query(monkeypatch):
+    adapter = TronAdapter(api_url="https://tron-rpc.publicnode.com")
+    calls = {}
+
+    def fake_post(url, **kwargs):
+        calls["url"] = url
+        calls["json"] = kwargs.get("json")
+        # 0x0f4240 = 1_000_000 = 1.0 USDT (6 decimals)
+        return _FakeResponse(
+            {
+                "result": {"result": True},
+                "constant_result": [
+                    "00000000000000000000000000000000000000000000000000000000000f4240"
+                ],
+            }
+        )
+
+    monkeypatch.setattr(adapter, "_post", fake_post)
+    bal = adapter.fetch_token_balance(
+        "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t", "TUEZSdKsoDHQMeZwihtdoBiN46zxhGWYdH"
+    )
+    assert bal == 1_000_000
+    assert calls["url"].endswith("/wallet/triggerconstantcontract")
+    j = calls["json"]
+    assert j["contract_address"] == "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t"
+    assert j["function_selector"] == "balanceOf(address)"
+    assert j["visible"] is True
+    # The owner address, 20-byte EVM form, left-padded to 32 bytes.
+    assert j["parameter"] == (
+        "000000000000000000000000c8599111f29c1e1e061265b4af93ea1f274ad78a"
+    )
+
+
+def test_trc20_fetch_token_balance_zero_for_empty_result(monkeypatch):
+    adapter = TronAdapter()
+    monkeypatch.setattr(
+        adapter, "_post", lambda url, **kw: _FakeResponse({"result": {"result": True}})
+    )
+    assert (
+        adapter.fetch_token_balance(
+            "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t", "TUEZSdKsoDHQMeZwihtdoBiN46zxhGWYdH"
+        )
+        == 0
+    )
+
+
+def test_tron_token_balances_reports_usdt(monkeypatch):
+    adapter = TronAdapter()
+    monkeypatch.setattr(
+        adapter, "fetch_token_balance", lambda contract, address: 3_000_000
+    )
+    reports = adapter.token_balances(MNEMONIC)
+    assert [r.symbol for r in reports] == ["USDT-TRON"]
+    assert reports[0].decimals == 6
+    assert reports[0].confirmed == 3_000_000
+    assert reports[0].format().startswith("USDT-TRON: 3.0")
+
+
 # --- spending FROM Tron (1e8 -> sun, build/verify wiring) ---
 
 
@@ -162,3 +223,14 @@ def test_tron_build_unsigned_transfer_live():
     assert built.memo == "+:TRON.TRX"
     # Signing is local and must succeed for a fresh (own-permission) account.
     assert adapter.sign(built)
+
+
+@pytest.mark.network
+def test_tron_token_balance_live():
+    """Live TRC-20 balanceOf against the keyless public node — guards the
+    triggerconstantcontract call/encoding against drift. Asserts shape, not an
+    exact (mutable) balance."""
+    reports = TronAdapter().token_balances(MNEMONIC)
+    assert [r.symbol for r in reports] == ["USDT-TRON"]
+    assert reports[0].decimals == 6
+    assert reports[0].confirmed >= 0
