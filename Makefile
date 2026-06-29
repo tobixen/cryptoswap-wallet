@@ -22,8 +22,10 @@ install:  ## Install the cryptoswap-wallet binary (auto-detects root/uv/pipx/pip
 	fi
 	@echo "Installed. Try: $(SCRIPT) --version"
 
-dev:  ## Set up the development environment
+dev:  ## Set up the development environment (deps + git hooks)
 	uv sync
+	uv run pre-commit install --install-hooks
+	uv run pre-commit install --hook-type pre-push
 
 lint:  ## Run ruff lint + format check
 	uv run ruff check .
