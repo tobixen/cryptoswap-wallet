@@ -1,14 +1,16 @@
-# Link-checker config, auto-discovered by lychee (pre-push hook + CI workflow).
-# Whole-tree scans pick up reserved/test URLs that will never resolve, plus the
+# Link-checker config, auto-discovered by lychee (the CI workflow + pre-push hook).
+# Whole-tree scans pick up reserved/test URLs that never resolve, plus the
 # not-yet-published PyPI project; exclude those so the check stays meaningful.
+# Regexes are anchored to the scheme + host so they can't match real domains
+# that merely contain "example" (e.g. myexample.org).
 
 exclude = [
-  # Reserved example domains used in tests/docs (x.example, example.com, …).
-  "([a-z0-9-]+\\.)*example(\\.[a-z]+)?(/|$)",
-  # PyPI project page 404s until the first release is published.
-  "pypi\\.org/p/cryptoswap-wallet",
-  # Placeholder addresses in usage snippets are not links.
-  "bc1q\\.\\.\\.",
+  # Reserved example domains in tests/docs: example.{com,org,net} and subdomains.
+  '^https?://([^/]+\.)?example\.(com|org|net)(/|$|[?#])',
+  # Reserved `.example` TLD and bare `example` host (e.g. https://x.example).
+  '^https?://([^/]+\.)?example(/|$|[:?#])',
+  # PyPI project page 404s until the first release (both /p/ and /project/ forms).
+  '^https?://pypi\.org/(p|project)/cryptoswap-wallet',
 ]
 
 # Hosts that rate-limit or block automated requests still count as reachable.

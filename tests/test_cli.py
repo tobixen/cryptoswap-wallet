@@ -184,6 +184,17 @@ def test_send_requires_address_and_amount():
         build_parser().parse_args(["send", "bc1qx"])  # no amount
 
 
+def test_main_version_exits_cleanly(monkeypatch):
+    # Exercises main()'s completion gate: with _ARGCOMPLETE unset, argcomplete is
+    # never imported and argparse's --version action exits 0.
+    monkeypatch.delenv("_ARGCOMPLETE", raising=False)
+    from cryptoswap_wallet.cli import main
+
+    with pytest.raises(SystemExit) as exc:
+        main(["--version"])
+    assert exc.value.code == 0
+
+
 def test_asset_map():
     assert ASSET["BTC"] == "BTC.BTC"
     assert ASSET["ETH"] == "ETH.ETH"

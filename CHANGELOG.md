@@ -7,6 +7,7 @@ automatically from git tags (PEP 440 / SemVer).
 ## [Unreleased]
 
 ### Added
+- Shell tab-completion via argcomplete (`register-python-argcomplete cryptoswap-wallet`).
 - THORChain REST client, pre-broadcast verify gate, and encrypted keystore
   (HD seeds + raw keys, AES-256-GCM, atomic writes).
 - Chain adapters: BTC (bitcoinlib), ETH + ERC-20 (eth-account/eth-abi),

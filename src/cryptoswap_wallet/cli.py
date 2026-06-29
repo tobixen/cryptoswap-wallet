@@ -1107,13 +1107,13 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
-    # Shell tab-completion: a no-op unless invoked by the completion machinery.
+    # Shell tab-completion. argcomplete sets _ARGCOMPLETE only when the completion
+    # machinery invokes us, so gate the import on it: normal runs pay nothing, and
+    # there's no optional-vs-required ambiguity (it's a declared dependency).
     # Enable with: eval "$(register-python-argcomplete cryptoswap-wallet)"
-    try:
+    if "_ARGCOMPLETE" in os.environ:
         import argcomplete
-    except ImportError:
-        pass
-    else:
+
         argcomplete.autocomplete(parser)
     args = parser.parse_args(argv)
     if not getattr(args, "func", None):

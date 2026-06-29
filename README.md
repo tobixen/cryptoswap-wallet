@@ -142,7 +142,8 @@ Versioning is automatic from git tags (hatch-vcs). Pushing a `v*` tag triggers
 *including* the live integration tests (`pytest -m network`) and only then builds
 and publishes to PyPI via trusted publishing — so a THORChain outage blocks a
 release. (Configure trusted publishing once at pypi.org.) `pre-commit` runs ruff
-on commit and the unit tests on push.
+plus a Conventional-Commits message check on commit, and the unit tests plus a
+lychee link check on push. Run `make dev` once to install the hooks.
 
 ## Refreshing test fixtures
 
