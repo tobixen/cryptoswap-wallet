@@ -6,7 +6,7 @@ A python/CLI multi-currency wallet that may do non-custodial cross-chain swaps v
 
 **Don't use this wallet for more funds than what you can afford to lose**.  Bugs in the code may easily cause **irreversible loss of funds**.  Even if all the code is perfect, consider that this is a **hot wallet**, an attacker that gains a foothold on the computer running this wallet software may potentially manage to drain the funds in the wallet.
 
-The rest of this document is AI-generated.
+The rest of this document is partially AI-generated.
 
 ## Installation
 
@@ -19,14 +19,12 @@ binary on your PATH. Then run `cryptoswap-wallet --help`.
 
 ## Features
 
-Swaps default to a **dry run** (build + verify + print); `--confirm` is required
-to broadcast. Destination addresses auto-derive from the seed; pass `--dest` to
-override.
+Swaps default to a **dry run** (build + verify + print); `--confirm`
+is required to broadcast, and `--yes` skips the interactive
+confirmation prompt. Destination addresses auto-derive from the seed;
+pass `--dest` to override.
 
-This is "current status" — most missing items are in the pipeline, prioritized
-by personal need and by issues/PRs received. Per-currency capabilities today
-(✅ = working, ◑ = partial, blank = not yet); currencies with **Support = none**
-under *Currency support* below have no features yet.
+The wallet is still under rapid development.  Missing features and currency support will be prioritized by personal need and by issues/PRs received.  Here is the "current status" of (partially) supported currencies (✅ = working, ◑ = partial, blank = not yet):
 
 | Currency  | Hold | Bal | To  | From | Send | Liq |
 |-----------|:----:|:---:|:---:|:----:|:----:|:---:|
@@ -39,66 +37,57 @@ under *Currency support* below have no features yet.
 | DOGE      |      |     |  ✅ |      |      |     |
 | BCH       |      |     |  ✅ |      |      |     |
 
-* **Hold** — derive an address, hold a balance, receive funds
-* **Bal**  — show the balance (native + any THORChain/Maya liquidity positions; token balances not shown yet)
-* **To**   — use as a swap *destination* (funds land here; LTC/DOGE/BCH need `--dest`)
-* **From** — use as a swap *source* (the asset you spend)
-* **Send** — send to an external address (a plain transfer, no swap)
-* **Liq**  — provide *single-sided* liquidity (experimental; see below)
+### Features explained
 
-Not per-currency, so kept out of the grid:
+* **Hold** — derive an `address`, hold a balance, receive funds
+* **Bal**  — show the `balance` (native + any THORChain/Maya liquidity positions; token balances not shown yet)
+* **To**   — use as a `swap` *destination* (for a currency whose address the wallet can't derive yet, give an external one via `--dest`)
+* **From** — use as a `swap` *source* (the asset you spend)
+* **Send** — `send` to an external address (a plain transfer, no swap)
+* **Liq**  — `add-liquidity` and `withdraw-liquidity` can be used to provide/withdraw *single-sided* liquidity (experimental; see below).
+
+Other features:
 
 * `quote` — read-only price preview for any supported asset
 * `status` — track a swap by its inbound txid
 * `address` — print the derived BTC / ETH / TRON addresses
 * `--amount max` — sweep the whole balance minus fees (BTC, ETH source)
-* `--backend auto` — compares **THORChain + Maya** and routes to the best price (`quote`, `swap`)
-
-Swap backends are pluggable (`cryptoswap_wallet.backends`): THORChain and its
-fork **Maya** share the API/memo format, so `--backend auto` (default) quotes
-both and picks the highest output. `quote` lists every backend's rate. (A
-trustless P2P backend like BasicSwap — privacy/XMR — would slot in here too, but
-it needs full nodes, so it's future work.)
+* `--backend auto` — compares **THORChain + Maya** and routes to the best price (`quote`, `swap`) for currencies supported by both backends.  (Other backends may be considered in the future)
 
 **Liquidity (experimental).** `add-liquidity` / `withdraw-liquidity` add or
-remove *single-sided* liquidity on a THORChain pool: you deposit the asset
-itself with a `+:POOL` memo, and later withdraw a fraction with `-:POOL:<bps>`.
-In return you earn a share of that pool's swap fees — but you take on impermanent
-loss and exposure to the RUNE side of the pool, so it is neither a swap nor
-risk-free yield. BTC, ETH and TRX are wired up. Note that THORChain frequently
-pauses LP deposits network-wide (`PAUSELP` in mimir); when it does, an add would
-be refunded minus gas, so `add-liquidity` checks this first and aborts rather
-than waste the round-trip fee. Withdrawals stay open so you can always exit.
+remove *single-sided* liquidity on a THORChain pool.  By adding liquidity one will earn a share of that pool's swap fees, but it's not without risks.  As of 2026-06-28 THORChain rejects new liquidity for all assets, probably due to a switch to protocol-owned liquidity (POL).  It's still possible to use `add-liquidity --backend maya`.  For bigger amounts, *double-sided* liquidity should be used rather than single-sided liquidity, but this is not supported yet.
 
-`add-liquidity --backend maya` LPs on the Maya fork instead (default
-`thorchain`). Maya's LP is often open when THORChain's is paused — but Maya pairs
-with **CACAO** (not RUNE), has a different pool set, and has **no TRON pool**, so
-only its supported assets (e.g. BTC, ETH) work there.
+## Currency roadmap
 
-## Currency support
-
-Reach is bounded by THORChain's pools. **Support**: full = most features
-working, partial = some features working, none = planned. Listed in recommended
-implementation order; see the capability grid above for the per-feature detail.
+It's on the roadmap to support the union of the currency sets
+supported by the available swapping backends. **Support**:
+full = every feature working, partial = some features working, none =
+planned. Listed in recommended implementation order; see the
+capability grid above for the per-feature detail.
 
 | Currency | What it is | Family | Support | Notes |
 |---|---|---|:--:|---|
 | BTC | Bitcoin | UTXO | full | |
-| ETH | Ethereum | EVM | full | |
-| USDT-ETH | Tether | ERC-20 token | full | |
-| TRX | TRON | TRON | full | |
+| ETH | Ethereum | EVM | partial | no `send` yet |
+| USDT-ETH | Tether | ERC-20 token | partial | no `send`/`balance`/liquidity yet |
+| TRX | TRON | TRON | partial | no `send` yet |
 | USDT-TRON | Tether | TRC-20 token | partial | |
 | BSC / BNB | BNB Smart Chain | EVM | none | |
 | AVAX | Avalanche C-Chain | EVM | none | |
 | BASE | Base (ETH L2) | EVM | none | |
-| USDC | USD Coin (ETH/BSC/AVAX/BASE) | ERC-20 token | none | |
+| ARB | Arbitrum (ETH L2) | EVM | none | Maya-only |
+| USDC | USD Coin (ETH/BSC/AVAX/BASE/ARB) | ERC-20 token | none | |
 | LTC | Litecoin | UTXO | partial | destination only (via `--dest`) |
 | DOGE | Dogecoin | UTXO | partial | destination only (via `--dest`) |
 | BCH | Bitcoin Cash | UTXO | partial | destination only (via `--dest`) |
+| DASH | Dash | UTXO | none | Maya-only |
+| ZEC | Zcash | UTXO | none | Maya-only |
 | RUNE | THORChain native | THORChain | none | |
+| CACAO | Maya native | Maya | none | Maya-only |
 | ATOM | Cosmos Hub | Cosmos | none | |
 | XRP | XRP Ledger | XRP | none | |
 | SOL | Solana | Solana | none | |
+| ADA | Cardano | Cardano | none | Maya-only |
 | XMR | Monero | Monero | none | no live THORChain pool yet |
 | TCY | THORChain reward token | THORChain token | none | niche; low priority |
 
