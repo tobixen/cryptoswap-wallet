@@ -115,6 +115,14 @@ Config via flags or env: keystore `$CRYPTOSWAP_WALLET_KEYSTORE`
 `$CRYPTOSWAP_WALLET_PASSPHRASE`, Esplora `$CRYPTOSWAP_WALLET_ESPLORA`, Ethereum
 RPC `$CRYPTOSWAP_WALLET_ETH_RPC`, TRON API `$CRYPTOSWAP_WALLET_TRON_API`.
 
+**Shell tab-completion** (via argcomplete) — enable for the current shell, e.g. bash:
+
+```sh
+eval "$(register-python-argcomplete cryptoswap-wallet)"   # add to ~/.bashrc to persist
+```
+
+zsh and fish work too; see the [argcomplete docs](https://github.com/kislyuk/argcomplete#activating-global-completion).
+
 ## Development
 
 ```sh

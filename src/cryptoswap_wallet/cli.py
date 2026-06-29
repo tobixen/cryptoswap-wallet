@@ -1107,6 +1107,14 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
+    # Shell tab-completion: a no-op unless invoked by the completion machinery.
+    # Enable with: eval "$(register-python-argcomplete cryptoswap-wallet)"
+    try:
+        import argcomplete
+    except ImportError:
+        pass
+    else:
+        argcomplete.autocomplete(parser)
     args = parser.parse_args(argv)
     if not getattr(args, "func", None):
         parser.print_help()

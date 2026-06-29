@@ -1,0 +1,15 @@
+# Link-checker config, auto-discovered by lychee (pre-push hook + CI workflow).
+# Whole-tree scans pick up reserved/test URLs that will never resolve, plus the
+# not-yet-published PyPI project; exclude those so the check stays meaningful.
+
+exclude = [
+  # Reserved example domains used in tests/docs (x.example, example.com, …).
+  "([a-z0-9-]+\\.)*example(\\.[a-z]+)?(/|$)",
+  # PyPI project page 404s until the first release is published.
+  "pypi\\.org/p/cryptoswap-wallet",
+  # Placeholder addresses in usage snippets are not links.
+  "bc1q\\.\\.\\.",
+]
+
+# Hosts that rate-limit or block automated requests still count as reachable.
+accept = ["200", "206", "429"]

@@ -26,6 +26,7 @@ dev:  ## Set up the development environment (deps + git hooks)
 	uv sync
 	uv run pre-commit install --install-hooks
 	uv run pre-commit install --hook-type pre-push
+	uv run pre-commit install --hook-type commit-msg
 
 lint:  ## Run ruff lint + format check
 	uv run ruff check .

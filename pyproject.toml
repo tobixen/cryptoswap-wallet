@@ -26,6 +26,7 @@ dependencies = [
   "eth-account>=0.13",
   "eth-abi>=5",
   "tronpy>=0.5",
+  "argcomplete>=3",  # shell tab-completion (register-python-argcomplete)
 ]
 
 [project.scripts]
@@ -62,3 +63,7 @@ testpaths = ["tests"]
 # Network/integration tests are opt-in: run them with `pytest -m network`.
 addopts = "-m 'not network'"
 markers = ["network: hits live THORChain (opt-in; excluded by default)"]
+# Treat warnings as errors so deprecations/misconfig surface as failures rather
+# than scroll by. Add a documented `ignore:...` entry here if an upstream dep
+# forces an unavoidable one.
+filterwarnings = ["error"]

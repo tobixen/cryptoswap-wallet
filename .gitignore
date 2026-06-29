@@ -6,6 +6,7 @@ dist/
 build/
 .pytest_cache/
 .ruff_cache/
+.lycheecache
 
 # SECRETS — never commit keys, seeds or the encrypted keystore.
 # Patterns target runtime data only, not source modules (e.g. keystore.py).
