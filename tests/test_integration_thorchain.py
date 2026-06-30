@@ -36,9 +36,17 @@ def test_btc_to_eth_quote_live():
 
 def test_hardcoded_usdt_assets_still_quote_live():
     # Guards the contract strings baked into cli.ASSET against THORChain changes.
+    # tolerance_bps=None disables the slippage price limit: these small swaps cost
+    # more than the default 3% in fees, which is unrelated to what we're guarding
+    # (the asset contract strings) and is covered separately by
+    # test_small_high_fee_swap_rejected_at_default_tolerance_live.
     with ThorchainClient() as thor:
-        to_tron = thor.quote_swap(ASSET["BTC"], ASSET["USDT-TRON"], 178100, TRON_DEST)
-        to_eth = thor.quote_swap(ASSET["BTC"], ASSET["USDT-ETH"], 178100, ETH_DEST)
+        to_tron = thor.quote_swap(
+            ASSET["BTC"], ASSET["USDT-TRON"], 178100, TRON_DEST, tolerance_bps=None
+        )
+        to_eth = thor.quote_swap(
+            ASSET["BTC"], ASSET["USDT-ETH"], 178100, ETH_DEST, tolerance_bps=None
+        )
     assert to_tron.expected_amount_out > 0
     assert to_eth.expected_amount_out > 0
 
@@ -102,8 +110,12 @@ def test_tron_usdt_source_quote_live():
     # USDT-TRON as a swap source: routerless (TRON has no THORChain router), so
     # the deposit is a plain TRC-20 transfer to inbound_address with the memo in
     # the tx data. Guards that mechanism and the memo paying the destination.
+    # tolerance_bps=None disables the slippage price limit (this small swap's fees
+    # exceed the default 3%, which is unrelated to the routerless mechanism here).
     with ThorchainClient() as thor:
-        quote = thor.quote_swap(ASSET["USDT-TRON"], "BTC.BTC", 2_000_000_000, BTC_DEST)
+        quote = thor.quote_swap(
+            ASSET["USDT-TRON"], "BTC.BTC", 2_000_000_000, BTC_DEST, tolerance_bps=None
+        )
     assert quote.router is None  # routerless — direct transfer, not depositWithExpiry
     assert quote.inbound_address  # the vault the transfer must pay
     assert quote.expected_amount_out > 0
