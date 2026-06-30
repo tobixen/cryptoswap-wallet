@@ -52,6 +52,7 @@ Other features:
 * `quote` — read-only price preview for any supported asset
 * `status` — track a swap by its inbound txid
 * `--backend auto` — compares **THORChain + Maya** and routes to the best price (`quote`, `swap`) for currencies supported by both backends.  (Other backends may be considered in the future)
+* `swap --tolerance-bps N` — raise the slippage/fee tolerance (default 300 = 3%). Small or thinly-traded swaps whose fees exceed the default are *refused* by THORChain; the wallet aborts with a clear message instead of a traceback, and you can opt into a wider tolerance here.
 * Transaction listings are not supported yet.
 
 **Liquidity (experimental).** `add-liquidity` / `withdraw-liquidity` add or

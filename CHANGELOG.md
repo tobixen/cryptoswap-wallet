@@ -21,6 +21,10 @@ automatically from git tags (PEP 440 / SemVer).
   TransferContract with the memo in tx data (tronpy), via a keyless public node.
 - Permissive `--dest` sanity check (network/format) to catch gross typos before
   a swap is quoted or broadcast.
+- `swap --tolerance-bps` (default 300) to widen the slippage/fee tolerance for
+  small or high-fee swaps THORChain refuses at the default. A rejected quote now
+  aborts cleanly with an actionable message (no traceback); the common
+  `emit ... less than price limit` case explains that fees exceed the tolerance.
 - Registry-based multi-chain `balance` (native coins plus tracked ERC-20/TRC-20
   token balances — USDT-ETH and USDT-TRON; now also reports THORChain/Maya
   liquidity positions: total redeemable value in the asset — the RUNE/CACAO side

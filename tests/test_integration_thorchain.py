@@ -8,7 +8,7 @@ with recorded fixtures cannot.
 import pytest
 
 from cryptoswap_wallet.cli import ASSET
-from cryptoswap_wallet.thorchain import ThorchainClient
+from cryptoswap_wallet.thorchain import ThorchainClient, ThorchainError
 
 pytestmark = pytest.mark.network
 
@@ -73,6 +73,22 @@ def test_liquidity_provider_no_position_is_none_live():
     # A never-provided address answers 200 with units 0 -> None (not an error).
     with ThorchainClient() as thor:
         assert thor.liquidity_provider("BTC.BTC", BTC_DEST) is None
+
+
+def test_small_high_fee_swap_rejected_at_default_tolerance_live():
+    # A small TRX->USDT-TRON swap costs well over 3% (the fixed TRON outbound fee
+    # dominates a ~$25 swap), so the default tolerance makes THORChain refuse the
+    # quote. Guards both that behaviour and the 'price limit' substring that
+    # swap._explain_quote_error keys on to produce its actionable abort message.
+    with ThorchainClient() as thor:
+        with pytest.raises(ThorchainError, match="price limit"):
+            thor.quote_swap(
+                ASSET["TRX"],
+                ASSET["USDT-TRON"],
+                8_669_000_000,
+                TRON_DEST,
+                tolerance_bps=300,
+            )
 
 
 def test_eth_usdt_source_quote_live():

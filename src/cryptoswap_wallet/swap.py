@@ -14,13 +14,33 @@ from __future__ import annotations
 import dataclasses
 from typing import Protocol
 
-from cryptoswap_wallet.thorchain import ChainStatus, Quote
+from cryptoswap_wallet.thorchain import ChainStatus, Quote, ThorchainError
 
 DEFAULT_TOLERANCE_BPS = 300
 
 
 class SwapAborted(RuntimeError):
     """Raised when a swap must not proceed (halted chain, too small, unsafe tx)."""
+
+
+def _explain_quote_error(exc: ThorchainError, tolerance_bps: int) -> str:
+    """Turn a raw THORChain quote rejection into an actionable abort message.
+
+    The common, confusing case is ``emit asset ... less than price limit ...``:
+    THORChain derives the price limit from ``tolerance_bps`` off the spot price,
+    so when the swap's fees/slippage exceed the tolerance the emitted amount
+    falls below the limit and the quote is refused. Small swaps trip this easily
+    because fixed outbound fees dominate them.
+    """
+    msg = str(exc)
+    if "price limit" in msg:
+        return (
+            f"THORChain rejected the quote: the swap's fees and slippage exceed "
+            f"your {tolerance_bps / 100:.2f}% tolerance. Send a larger amount "
+            f"(fixed outbound fees dominate small swaps) or raise --tolerance-bps. "
+            f"[{msg}]"
+        )
+    return f"THORChain rejected the quote: {msg}"
 
 
 class BroadcastError(RuntimeError):
@@ -134,13 +154,16 @@ def prepare_swap(
     if status is None or not status.tradable:
         raise SwapAborted(f"{adapter.chain} is not currently tradable on THORChain")
 
-    quote = thorchain.quote_swap(
-        request.from_asset,
-        request.to_asset,
-        request.amount,
-        request.destination,
-        tolerance_bps=tolerance_bps,
-    )
+    try:
+        quote = thorchain.quote_swap(
+            request.from_asset,
+            request.to_asset,
+            request.amount,
+            request.destination,
+            tolerance_bps=tolerance_bps,
+        )
+    except ThorchainError as exc:
+        raise SwapAborted(_explain_quote_error(exc, tolerance_bps)) from exc
     if request.amount < quote.recommended_min_amount_in:
         raise SwapAborted(
             f"amount {request.amount} is below the recommended minimum "

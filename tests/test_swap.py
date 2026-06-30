@@ -158,6 +158,34 @@ def test_prepare_works_for_eth_chain_too():
     assert p.safe
 
 
+class _RaisingThor(FakeThor):
+    def __init__(self, message, **kw):
+        super().__init__(**kw)
+        self._message = message
+
+    def quote_swap(self, *args, **kwargs):
+        from cryptoswap_wallet.thorchain import ThorchainError
+
+        raise ThorchainError(self._message)
+
+
+def test_prepare_translates_price_limit_error_into_tolerance_abort():
+    # THORChain rejects when fees/slippage exceed tolerance; the raw error must
+    # become a clean SwapAborted that points at --tolerance-bps (no traceback).
+    thor = _RaisingThor(
+        "failed to simulate swap: emit asset 2425906900 less than price "
+        "limit 2707570991: invalid request"
+    )
+    with pytest.raises(SwapAborted, match="tolerance"):
+        prepare(thor=thor)
+
+
+def test_prepare_translates_generic_thorchain_error_into_abort():
+    thor = _RaisingThor("pool suspended")
+    with pytest.raises(SwapAborted, match="THORChain rejected"):
+        prepare(thor=thor)
+
+
 def test_prepare_surfaces_adapter_problems():
     p = prepare(adapter=FakeAdapter(problems=["vault mismatch"]))
     assert not p.safe

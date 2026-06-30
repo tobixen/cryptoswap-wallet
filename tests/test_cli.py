@@ -116,6 +116,18 @@ def test_swap_from_eth_token_sweep_uses_full_token_balance(monkeypatch):
     assert captured["amount"] == 250_000_000  # 2.5 USDT in THORChain 1e8 units
 
 
+def test_swap_tolerance_bps_defaults_to_300():
+    args = build_parser().parse_args(["swap", "--amount", "1"])
+    assert args.tolerance_bps == 300
+
+
+def test_swap_tolerance_bps_flag_parses():
+    args = build_parser().parse_args(
+        ["swap", "--amount", "1", "--tolerance-bps", "1500"]
+    )
+    assert args.tolerance_bps == 1500
+
+
 def test_swap_eth_rpc_flag_parses():
     args = build_parser().parse_args(
         ["swap", "--from", "ETH", "--amount", "0.01", "--eth-rpc", "https://x.example"]

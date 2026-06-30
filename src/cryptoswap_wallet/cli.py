@@ -24,6 +24,7 @@ from cryptoswap_wallet.addresses import validate_destination_address
 from cryptoswap_wallet.keystore import HdKey, Keystore
 from cryptoswap_wallet.net import HTTP_ERRORS
 from cryptoswap_wallet.swap import (
+    DEFAULT_TOLERANCE_BPS,
     BroadcastError,
     SwapAborted,
     SwapRequest,
@@ -564,6 +565,7 @@ def _swap_from_btc(args: argparse.Namespace) -> int:
                     request=request,
                     now=int(time.time()),
                     mnemonic=mnemonic,
+                    tolerance_bps=args.tolerance_bps,
                     scanned_utxos=utxos,
                     fee_rate=fee_rate,
                     change_address=change_address,
@@ -658,6 +660,7 @@ def _swap_from_eth(args: argparse.Namespace) -> int:
                     request=request,
                     now=int(time.time()),
                     mnemonic=mnemonic,
+                    tolerance_bps=args.tolerance_bps,
                     nonce=nonce,
                     gas=args.eth_gas,
                     max_fee_per_gas=max_fee_per_gas,
@@ -719,6 +722,7 @@ def _swap_from_tron(args: argparse.Namespace) -> int:
                     request=request,
                     now=int(time.time()),
                     mnemonic=mnemonic,
+                    tolerance_bps=args.tolerance_bps,
                 )
         except (SwapAborted, ValueError) as exc:
             print(f"ABORTED: {exc}", file=sys.stderr)
@@ -1071,6 +1075,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     s.add_argument(
         "--eth-gas", type=int, default=60000, help="gas limit for ETH deposit"
+    )
+    s.add_argument(
+        "--tolerance-bps",
+        type=int,
+        default=DEFAULT_TOLERANCE_BPS,
+        help="max basis points of price tolerance; raise it for small/high-fee "
+        f"swaps THORChain refuses at the default {DEFAULT_TOLERANCE_BPS}",
     )
     s.set_defaults(func=cmd_swap)
 
