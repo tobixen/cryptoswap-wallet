@@ -66,6 +66,43 @@ def test_v1_keystore_strips_bip39_passphrase(tmp_path):
     assert loaded.entries[0].passphrase is None
 
 
+def test_load_honours_stored_key_length(tmp_path):
+    # The KDF key length is persisted in kdf_params; load must derive with the
+    # stored value, not a hardcoded constant, so a keystore written under a
+    # different KEY_LEN still decrypts. Craft an envelope with a non-default
+    # length and confirm it round-trips.
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+    from cryptography.hazmat.primitives.kdf.scrypt import Scrypt
+
+    from cryptoswap_wallet import keystore as ks_mod
+
+    path = tmp_path / "ks.json"
+    make().save(path, PW, n=LOW_N)
+    env = json.loads(path.read_text())
+
+    length = 16  # deliberately not the default KEY_LEN (32)
+    salt = base64.b64decode(env["salt"])
+    nonce = base64.b64decode(env["nonce"])
+
+    def key_of(key_len: int) -> bytes:
+        kdf = Scrypt(
+            salt=salt, length=key_len, n=LOW_N, r=ks_mod.SCRYPT_R, p=ks_mod.SCRYPT_P
+        )
+        return kdf.derive(PW.encode())
+
+    plaintext = AESGCM(key_of(ks_mod.KEY_LEN)).decrypt(
+        nonce, base64.b64decode(env["ciphertext"]), None
+    )
+    env["kdf_params"]["length"] = length
+    env["ciphertext"] = base64.b64encode(
+        AESGCM(key_of(length)).encrypt(nonce, plaintext, None)
+    ).decode()
+    path.write_text(json.dumps(env))
+
+    loaded = Keystore.load(path, PW)
+    assert loaded.labels() == ["trustwallet", "paper-btc"]
+
+
 def test_save_writes_version_2(tmp_path):
     path = tmp_path / "ks.json"
     make().save(path, PW, n=LOW_N)

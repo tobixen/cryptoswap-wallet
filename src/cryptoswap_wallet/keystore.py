@@ -183,7 +183,14 @@ class Keystore:
         except (OSError, ValueError, KeyError) as exc:
             raise KeystoreError(f"cannot read keystore: {exc}") from exc
 
-        key = _derive_key(passphrase, salt, n=params["n"], r=params["r"], p=params["p"])
+        key = _derive_key(
+            passphrase,
+            salt,
+            n=params["n"],
+            r=params["r"],
+            p=params["p"],
+            length=params.get("length", KEY_LEN),
+        )
         try:
             plaintext = AESGCM(key).decrypt(nonce, ciphertext, None)
         except InvalidTag as exc:
@@ -232,6 +239,7 @@ def _derive_key(
     n: int = DEFAULT_N,
     r: int = SCRYPT_R,
     p: int = SCRYPT_P,
+    length: int = KEY_LEN,
 ) -> bytes:
-    kdf = Scrypt(salt=salt, length=KEY_LEN, n=n, r=r, p=p)
+    kdf = Scrypt(salt=salt, length=length, n=n, r=r, p=p)
     return kdf.derive(passphrase.encode())

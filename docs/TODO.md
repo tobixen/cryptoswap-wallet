@@ -106,9 +106,11 @@ Still open:
   `cmd_address` / `_swap_from_*`.
 - **A7** — split `base.ChainAdapter` into `WalletChain` vs `SourceChain` (Tron is
   destination-only). The `swap.SwapSource` protocol already exists from A4.
-- **C-list** — keystore envelope `length` unused; one `ThreadPoolExecutor` per
-  scan; `quote` memo row alignment; note ETH/TRON balance only inspects index 0;
-  `--tolerance-bps` flag.
+- **C-list** — one `ThreadPoolExecutor` per scan; `quote` memo row alignment;
+  note ETH/TRON balance only inspects index 0.
+  Done: keystore envelope `length` is now honoured on load (was written but
+  ignored — `load` hardcoded `KEY_LEN`); `--tolerance-bps` flag (wired through
+  every swap path, `cli.py`).
 
 ## Swap backends
 
@@ -133,15 +135,14 @@ lowest-price routing across backends.
   types when needed.
 - **ETH gas estimation**: ETH source uses a fixed `--eth-gas` (default 60000);
   could call `eth_estimateGas` against the quote's vault/memo instead.
-- **USDT-TRON as a source**: TRX (native) source is now done — signs a
-  TransferContract with the memo in tx data via tronpy, against the keyless
-  public node (`tron-rpc.publicnode.com`; the old "needs a TronGrid API key /
-  429s" worry was TronGrid's free tier, not this node). USDT-TRON still pending:
-  it's a TRC-20 `transfer` to the vault with the memo, no router on TRON — needs
-  a TriggerSmartContract build + its own verify gate (decode the transfer
-  calldata, bind recipient/amount, check the memo).
-- **Token balances in `balance`**: show USDT (TRC-20/ERC-20) holdings, not just
-  native BTC/ETH/TRX.
+- ~~**USDT-TRON as a source**~~ **DONE.** TRX (native) and the TRC-20 token
+  source both land: a `TriggerSmartContract` `transfer(vault, amount)` with the
+  swap memo in the tx data (no router on TRON), gated by `verify_tron_token_swap`
+  which decodes the transfer calldata and binds recipient/amount/memo. See
+  `tron.py` (`build_unsigned_trc20_transfer`, `_build_and_verify_token`).
+- ~~**Token balances in `balance`**~~ **DONE.** `balance` now reports USDT
+  (TRC-20/ERC-20) holdings alongside native BTC/ETH/TRX, via each adapter's
+  `token_balances` and `cli._report_token_balances`.
 - **Cache LP provider addresses (balance-report speed-up)**: reporting added
   liquidity queries the backend's `pool/{POOL}/liquidity_provider/{ADDRESS}`
   endpoint. ETH/TRON have a single derived address; BTC's LP is keyed by the
