@@ -120,10 +120,20 @@ lowest-price routing across backends.
 - **Maya-only assets**: expose DASH, ZEC, ADA (Cardano), ARB (Arbitrum) — Maya
   has pools THORChain lacks; just needs `ASSET` entries + dest derivation.
 - **USDC on cheaper chains**: ETH.USDC is done (mirrors USDT-ETH). THORChain also
-  pools USDC on BSC/AVAX/BASE and Maya on ARB — all far cheaper to use than ETH
+  pools USDC on AVAX/BASE and Maya on ARB — all far cheaper to use than ETH
   mainnet. Each needs a new EVM chain adapter (RPC, chain-id, native coin, dest
   validation), so this is the moment to do A2/A3 (generalize `EthAdapter` into a
   shared EVM code path) rather than copy it per chain.
+- **BSC (BNB Smart Chain) — blocked, do not implement swaps yet.** THORChain has
+  BSC `chain_trading_paused`/`halted` (a live `BTC->BSC.BNB` quote returns
+  "trading is halted, can't process swap"), and Maya has no BSC pools — so every
+  swap feature (To/From/Sweep/Liq) is unusable and untestable until THORChain
+  re-enables BSC. Only Hold (EVM address == ETH address) and Balance (native BNB
+  + BEP-20 tokens) would work, and those were deferred too. NOTE the decimals
+  gotcha for whenever this is picked up: BSC's USDC (`0x8ac7...`) and USDT
+  (`0x55d3...`) are **18 decimals**, not 6 as on Ethereum — must go in a
+  BSC-specific `KNOWN_TOKEN_DECIMALS` or balances/amounts will be off by 1e12.
+  Revisit when `inbound_addresses` shows BSC `chain_trading_paused: false`.
 - **`send` to external address**: see *Next up* item 1 (BTC first).
 - **BasicSwap backend** (trustless P2P / privacy / XMR): orchestrate its daemon
   via API; needs full nodes (heavy) and a different custody seam. Future.

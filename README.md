@@ -72,15 +72,15 @@ capability grid above for the per-feature detail.
 | BTC | Bitcoin | UTXO | full | |
 | ETH | Ethereum | EVM | partial | no `send` yet |
 | TRX | TRON | TRON | partial | no `send` yet |
-| BSC / BNB | BNB Smart Chain | EVM | none | |
+| BSC / BNB | BNB Smart Chain | EVM | none | Blocked: BSC trading halted on THORChain (`chain_trading_paused`), and Maya has no BSC pools — nothing to swap against until THORChain re-enables it |
 | USDT-ETH | Tether | ERC-20 token | partial | no `send`/liquidity yet |
 | USDT-TRON | Tether | TRC-20 token | partial | no `send` yet |
-| USDT-BSC | Tether | ? | none | Currently halted on THORChain.  Available on Maya |
+| USDT-BSC | Tether | BEP-20 token | none | Blocked: halted on THORChain, not on Maya (Maya has no BSC pools) |
 | USBT-SOL | Tether | ? | none | Not currently available on THORChain/Maya |
 | AVAX | Avalanche C-Chain | EVM | none | |
 | BASE | Base (ETH L2) | EVM | none | |
 | ARB | Arbitrum (ETH L2) | EVM | none | Maya-only |
-| USDC | USD Coin (ETH/BSC/AVAX/BASE/ARB) | ERC-20 token | partial | ETH done (no `send` yet, like USDT-ETH); BSC/AVAX/BASE/ARB need new EVM chain adapters |
+| USDC | USD Coin (ETH/BSC/AVAX/BASE/ARB) | ERC-20 token | partial | ETH done (no `send` yet, like USDT-ETH); AVAX/BASE/ARB need new EVM chain adapters; BSC additionally blocked by the THORChain halt |
 | LTC | Litecoin | UTXO | partial | destination only (via `--dest`) |
 | DOGE | Dogecoin | UTXO | partial | destination only (via `--dest`) |
 | BCH | Bitcoin Cash | UTXO | partial | destination only (via `--dest`) |
