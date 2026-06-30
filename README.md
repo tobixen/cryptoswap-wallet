@@ -34,6 +34,7 @@ The wallet is still under rapid development as of 2026-06-29.  Missing features 
 | USDC-ETH  |  ✅  |  ✅ |  ✅ |  ✅  |      |  ✅  |     |
 | TRX       |  ✅  |  ✅ |  ✅ |  ✅  |      |      |  ✅ |
 | USDT-TRON |  ✅  |  ✅ |  ✅ |  ✅  |      |  ✅  |     |
+| BNB (BSC) |  ✅  |  ✅ |     |      |      |      |     |
 | LTC       |      |     |  ✅ |      |      |      |     |
 | DOGE      |      |     |  ✅ |      |      |      |     |
 | BCH       |      |     |  ✅ |      |      |      |     |
@@ -72,7 +73,7 @@ capability grid above for the per-feature detail.
 | BTC | Bitcoin | UTXO | full | |
 | ETH | Ethereum | EVM | partial | no `send` yet |
 | TRX | TRON | TRON | partial | no `send` yet |
-| BSC / BNB | BNB Smart Chain | EVM | none | Blocked: BSC trading halted on THORChain (`chain_trading_paused`), and Maya has no BSC pools — nothing to swap against until THORChain re-enables it |
+| BSC / BNB | BNB Smart Chain | EVM | partial | Hold + balance work (native BNB and BEP-20 USDC/USDT, 18-decimal). Swaps blocked: BSC trading halted on THORChain (`chain_trading_paused`), and Maya has no BSC pools — nothing to swap against until THORChain re-enables it |
 | USDT-ETH | Tether | ERC-20 token | partial | no `send`/liquidity yet |
 | USDT-TRON | Tether | TRC-20 token | partial | no `send` yet |
 | USDT-BSC | Tether | BEP-20 token | none | Blocked: halted on THORChain, not on Maya (Maya has no BSC pools) |
@@ -118,7 +119,8 @@ and asks before broadcasting (`--yes` skips the prompt for automation).
 Config via flags or env: keystore `$CRYPTOSWAP_WALLET_KEYSTORE`
 (`~/.config/cryptoswap-wallet/keystore.json`), passphrase
 `$CRYPTOSWAP_WALLET_PASSPHRASE`, Esplora `$CRYPTOSWAP_WALLET_ESPLORA`, Ethereum
-RPC `$CRYPTOSWAP_WALLET_ETH_RPC`, TRON API `$CRYPTOSWAP_WALLET_TRON_API`.
+RPC `$CRYPTOSWAP_WALLET_ETH_RPC`, TRON API `$CRYPTOSWAP_WALLET_TRON_API`, BSC RPC
+`$CRYPTOSWAP_WALLET_BSC_RPC`.
 
 **Shell tab-completion** (via argcomplete) — enable for the current shell, e.g. bash:
 

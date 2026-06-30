@@ -11,7 +11,10 @@ automatically from git tags (PEP 440 / SemVer).
 - THORChain REST client, pre-broadcast verify gate, and encrypted keystore
   (HD seeds + raw keys, AES-256-GCM, atomic writes).
 - Chain adapters: BTC (bitcoinlib), ETH + ERC-20 (eth-account/eth-abi),
-  TRON (address + balance).
+  TRON (address + balance), BSC (address + balance: native BNB and BEP-20
+  USDC/USDT at 18 decimals; a thin EVM subclass of the ETH adapter). BSC swaps
+  are intentionally not implemented — THORChain has BSC trading halted and Maya
+  has no BSC pools.
 - Swaps: BTC, ETH (native), TRX (native), USDT-ETH/USDC-ETH (ERC-20) and
   USDT-TRON
   (TRC-20) as sources; BTC,

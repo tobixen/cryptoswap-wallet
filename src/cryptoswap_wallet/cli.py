@@ -107,12 +107,24 @@ def _tron_adapter(args: argparse.Namespace, passphrase: str = ""):  # noqa: ANN2
     return TronAdapter(url, bip39_passphrase=passphrase)
 
 
+def _bsc_adapter(args: argparse.Namespace, passphrase: str = ""):  # noqa: ANN202
+    from cryptoswap_wallet.chains.bsc import DEFAULT_BSC_RPC, BscAdapter
+
+    url = (
+        getattr(args, "bsc_rpc", None)
+        or os.environ.get("CRYPTOSWAP_WALLET_BSC_RPC")
+        or DEFAULT_BSC_RPC
+    )
+    return BscAdapter(url, bip39_passphrase=passphrase)
+
+
 def _wallet_adapters(args: argparse.Namespace, passphrase: str = "") -> list:  # noqa: ANN201
     """Adapters whose balances `balance` reports — add a chain here and it scales."""
     return [
         _btc_adapter(args, passphrase),
         _eth_adapter(args, passphrase),
         _tron_adapter(args, passphrase),
+        _bsc_adapter(args, passphrase),
     ]
 
 
@@ -221,6 +233,7 @@ def cmd_list(args: argparse.Namespace) -> int:
 
 
 def cmd_address(args: argparse.Namespace) -> int:
+    from cryptoswap_wallet.chains.bsc import BscAdapter
     from cryptoswap_wallet.chains.btc import BtcAdapter
     from cryptoswap_wallet.chains.eth import EthAdapter
     from cryptoswap_wallet.chains.tron import TronAdapter
@@ -233,6 +246,12 @@ def cmd_address(args: argparse.Namespace) -> int:
         ),
     )
     print("ETH: ", EthAdapter(bip39_passphrase=passphrase).derive_address(mnemonic))
+    # BSC is EVM: the same derived address as ETH (and every other EVM chain).
+    print(
+        "BSC: ",
+        BscAdapter(bip39_passphrase=passphrase).derive_address(mnemonic),
+        "(same EVM address as ETH)",
+    )
     print("TRON:", TronAdapter(bip39_passphrase=passphrase).derive_address(mnemonic))
     return 0
 
@@ -1151,7 +1170,7 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--key")
     s.set_defaults(func=cmd_show_seed)
 
-    s = sub.add_parser("address", help="show derived BTC and ETH addresses")
+    s = sub.add_parser("address", help="show derived BTC, ETH, BSC and TRON addresses")
     s.add_argument("--key")
     s.set_defaults(func=cmd_address)
 
@@ -1161,6 +1180,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--eth-rpc", help="Ethereum JSON-RPC URL ($CRYPTOSWAP_WALLET_ETH_RPC)"
     )
     s.add_argument("--tron-api", help="TRON API base URL ($CRYPTOSWAP_WALLET_TRON_API)")
+    s.add_argument("--bsc-rpc", help="BSC JSON-RPC URL ($CRYPTOSWAP_WALLET_BSC_RPC)")
     s.set_defaults(func=cmd_balance)
 
     s = sub.add_parser("quote", help="show a THORChain swap quote")

@@ -124,16 +124,17 @@ lowest-price routing across backends.
   mainnet. Each needs a new EVM chain adapter (RPC, chain-id, native coin, dest
   validation), so this is the moment to do A2/A3 (generalize `EthAdapter` into a
   shared EVM code path) rather than copy it per chain.
-- **BSC (BNB Smart Chain) — blocked, do not implement swaps yet.** THORChain has
-  BSC `chain_trading_paused`/`halted` (a live `BTC->BSC.BNB` quote returns
-  "trading is halted, can't process swap"), and Maya has no BSC pools — so every
-  swap feature (To/From/Sweep/Liq) is unusable and untestable until THORChain
-  re-enables BSC. Only Hold (EVM address == ETH address) and Balance (native BNB
-  + BEP-20 tokens) would work, and those were deferred too. NOTE the decimals
-  gotcha for whenever this is picked up: BSC's USDC (`0x8ac7...`) and USDT
-  (`0x55d3...`) are **18 decimals**, not 6 as on Ethereum — must go in a
-  BSC-specific `KNOWN_TOKEN_DECIMALS` or balances/amounts will be off by 1e12.
-  Revisit when `inbound_addresses` shows BSC `chain_trading_paused: false`.
+- **BSC (BNB Smart Chain)** — Hold + Balance **DONE** (`chains/bsc.py`, a thin
+  EVM subclass of `EthAdapter`: native BNB + BEP-20 USDC/USDT at 18 decimals,
+  wired into `cmd_address`/`balance` with `--bsc-rpc`/`$CRYPTOSWAP_WALLET_BSC_RPC`).
+  Swaps are still **blocked, do not implement yet**: THORChain has BSC
+  `chain_trading_paused`/`halted` (a live `BTC->BSC.BNB` quote returns "trading is
+  halted, can't process swap") and Maya has no BSC pools, so To/From/Sweep/Liq are
+  unusable and untestable. `BscAdapter.build_and_verify` raises by design (the
+  inherited builders bake in ETH's chain id 1, wrong for BSC's 56). Revisit when
+  `inbound_addresses` shows BSC `chain_trading_paused: false`; a swap source will
+  also need the EVM chain id parameterized (currently the module-level
+  `CHAIN_ID` in `eth.py`) — fold into the A2/A3 EVM generalization.
 - **`send` to external address**: see *Next up* item 1 (BTC first).
 - **BasicSwap backend** (trustless P2P / privacy / XMR): orchestrate its daemon
   via API; needs full nodes (heavy) and a different custody seam. Future.

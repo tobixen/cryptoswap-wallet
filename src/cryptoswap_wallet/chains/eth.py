@@ -225,10 +225,20 @@ def verify_eth_token_swap(
 
 
 class EthAdapter(HttpClient):
-    """ChainAdapter for native Ethereum."""
+    """ChainAdapter for native Ethereum.
+
+    The chain-specific surface (chain/asset/native symbol, the token balance
+    label suffix, and the tracked-token table) is exposed as class attributes so
+    other EVM chains — which share derivation, JSON-RPC and balance mechanics —
+    can subclass and override only what differs (see ``chains.bsc``).
+    """
 
     chain = "ETH"
     asset = "ETH.ETH"
+    native_symbol = "ETH"
+    token_suffix = "ETH"  # balance label suffix, e.g. "USDC-ETH"
+    tracked_tokens = TRACKED_TOKENS
+    known_token_decimals = KNOWN_TOKEN_DECIMALS
 
     def __init__(
         self,
@@ -284,13 +294,13 @@ class EthAdapter(HttpClient):
         already know (e.g. USDT = 6).
         """
         key = "0x" + token.lower().removeprefix("0x")
-        known = KNOWN_TOKEN_DECIMALS.get(key)
+        known = self.known_token_decimals.get(key)
         return known if known is not None else self.fetch_token_decimals(token)
 
     def wallet_balance(self, mnemonic: str) -> BalanceReport:
         address = self.derive_address(mnemonic)
         return BalanceReport(
-            symbol="ETH",
+            symbol=self.native_symbol,
             confirmed=self.fetch_balance(address),
             decimals=18,
             note=f"({address})",
@@ -304,16 +314,16 @@ class EthAdapter(HttpClient):
         return int(self._rpc("eth_call", [{"to": token, "data": data}, "latest"]), 16)
 
     def token_balances(self, mnemonic: str) -> list[BalanceReport]:
-        """ERC-20 balances (e.g. USDT-ETH) at the wallet's ETH address."""
+        """ERC-20 balances (e.g. USDT-ETH) at the wallet's EVM address."""
         address = self.derive_address(mnemonic)
         return [
             BalanceReport(
-                symbol=f"{symbol}-ETH",
+                symbol=f"{symbol}-{self.token_suffix}",
                 confirmed=self.fetch_token_balance(contract, address),
                 decimals=decimals,
                 addresses=(address,),
             )
-            for symbol, contract, decimals in TRACKED_TOKENS
+            for symbol, contract, decimals in self.tracked_tokens
         ]
 
     def fetch_fees(self) -> tuple[int, int]:
