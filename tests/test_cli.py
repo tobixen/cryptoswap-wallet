@@ -128,6 +128,58 @@ def test_swap_tolerance_bps_flag_parses():
     assert args.tolerance_bps == 1500
 
 
+def test_swap_from_tron_token_sweep_uses_full_balance(monkeypatch):
+    """`--amount max` for USDT-TRON sweeps the whole token balance (energy is
+    paid in TRX, so the amount is exact) — it must build the swap, not reject."""
+    import cryptoswap_wallet.cli as cli
+    from cryptoswap_wallet.swap import SwapAborted
+
+    class FakeAdapter:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def derive_address(self, mnemonic):
+            return "TUEZSdKsoDHQMeZwihtdoBiN46zxhGWYdH"
+
+        def token_contract_and_decimals(self, from_asset):
+            return ("TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t", 6)
+
+        def fetch_token_balance(self, contract, address):
+            return 23_000_000  # 23 USDT (6 decimals)
+
+    monkeypatch.setattr(cli, "_load_mnemonic", lambda args: "mnemonic")
+    monkeypatch.setattr(cli, "_resolve_destination", lambda args, m: "bc1qdest")
+    monkeypatch.setattr(cli, "_tron_adapter", lambda args: FakeAdapter())
+
+    captured = {}
+
+    def fake_select_backend(args, *, from_asset, to_asset, amount, destination):
+        captured["amount"] = amount
+        raise SwapAborted("captured")  # short-circuit before any network/quote
+
+    monkeypatch.setattr(cli, "_select_backend", fake_select_backend)
+
+    args = build_parser().parse_args(
+        ["swap", "--from", "USDT-TRON", "--to", "BTC", "--amount", "max"]
+    )
+    rc = cli._swap_from_tron(args)
+    assert rc == 1  # aborted via our stub, not a "not supported" rejection
+    assert captured["amount"] == 2_300_000_000  # 23 USDT in THORChain 1e8 units
+
+
+def test_swap_from_tron_native_max_still_rejected():
+    """Native TRX sweep stays unsupported (it needs a TRX fee reserve)."""
+    import cryptoswap_wallet.cli as cli
+
+    args = build_parser().parse_args(
+        ["swap", "--from", "TRX", "--to", "BTC", "--amount", "max"]
+    )
+    assert cli._swap_from_tron(args) == 2
+
+
 def test_swap_eth_rpc_flag_parses():
     args = build_parser().parse_args(
         ["swap", "--from", "ETH", "--amount", "0.01", "--eth-rpc", "https://x.example"]

@@ -684,9 +684,13 @@ def _swap_from_eth(args: argparse.Namespace) -> int:
 
 
 def _swap_from_tron(args: argparse.Namespace) -> int:
+    from cryptoswap_wallet.chains.coins import InsufficientFunds, token_sweep_amount
+
     is_token = "-" in ASSET[args.from_]
-    if args.amount == "max":
-        print("--amount max is not supported for TRON yet", file=sys.stderr)
+    sweep = args.amount == "max"
+    if sweep and not is_token:
+        # A native TRX sweep would need a TRX reserve for bandwidth/energy.
+        print("--amount max is not supported for native TRX yet", file=sys.stderr)
         return 2
     if is_token:
         _warn(
@@ -702,8 +706,23 @@ def _swap_from_tron(args: argparse.Namespace) -> int:
         print("a --dest address is required for this destination", file=sys.stderr)
         return 2
 
-    amount = int(round(args.amount * THORCHAIN_UNIT))
     with _tron_adapter(args) as adapter:
+        if sweep:
+            # A token sweep sends the whole balance — energy is paid in TRX, not
+            # the token, so the amount is exact.
+            contract, decimals = adapter.token_contract_and_decimals(ASSET[args.from_])
+            try:
+                amount = token_sweep_amount(
+                    adapter.fetch_token_balance(
+                        contract, adapter.derive_address(mnemonic)
+                    ),
+                    decimals,
+                )
+            except InsufficientFunds as exc:
+                print(f"ABORTED: {exc}", file=sys.stderr)
+                return 1
+        else:
+            amount = int(round(args.amount * THORCHAIN_UNIT))
         request = SwapRequest(
             from_asset=ASSET[args.from_],
             to_asset=ASSET[args.to_],
@@ -735,7 +754,7 @@ def _swap_from_tron(args: argparse.Namespace) -> int:
         vault = prepared.quote.inbound_address
         print(f"via:     {backend.name}")
         if is_token:
-            print(f"send:    {args.amount} {args.from_} to {vault}")
+            print(f"send:    {amount / THORCHAIN_UNIT:.6f} {args.from_} to {vault}")
         else:
             print(f"send:    {prepared.plan.amount_sun} sun to {vault}")
         print(f"expect:  {out:.8f} {args.to_} -> {dest}")

@@ -255,6 +255,20 @@ class TronAdapter(HttpClient):
         return sun
 
     @staticmethod
+    def token_contract_and_decimals(from_asset: str) -> tuple[str, int]:
+        """Look up a TRON token's mixed-case base58 contract and decimals.
+
+        Keyed by the THORChain asset string (which upper-cases the contract).
+        Raises :class:`ValueError` for a non-token or unknown asset.
+        """
+        try:
+            return _TRON_TOKENS[from_asset]
+        except KeyError:
+            raise ValueError(
+                f"{from_asset} is not a supported TRON token source"
+            ) from None
+
+    @staticmethod
     def to_token_native(amount_thorchain: int, decimals: int) -> int:
         """Convert a THORChain 1e8 amount to a token's native units; reject dust.
 
@@ -395,12 +409,7 @@ class TronAdapter(HttpClient):
         token contract, recipient, amount and memo — a mistake here is an
         unrefundable loss.
         """
-        try:
-            token, decimals = _TRON_TOKENS[request.from_asset]
-        except KeyError:
-            raise ValueError(
-                f"{request.from_asset} is not a supported TRON token source"
-            ) from None
+        token, decimals = self.token_contract_and_decimals(request.from_asset)
         native = self.to_token_native(request.amount, decimals)
         vault = quote.inbound_address
         memo = quote.memo or ""

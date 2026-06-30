@@ -16,8 +16,9 @@ automatically from git tags (PEP 440 / SemVer).
   (TRC-20) as sources; BTC,
   ETH, TRX, USDT-TRON, USDT-ETH and (external-`--dest`-only) LTC, DOGE, BCH as
   destinations. `--amount max` sweep for BTC/ETH (swap and add-liquidity) and
-  for ERC-20 token sources like USDT-ETH (swap; the whole token balance, exact
-  since gas is paid in ETH). The TRX source signs a native TransferContract with
+  for ERC-20/TRC-20 token sources (USDT-ETH, USDT-TRON) on swap — the whole
+  token balance, exact since the fee is paid in the native coin, not the token.
+  The TRX source signs a native TransferContract with
   the memo in tx data (tronpy), via a keyless public node; the USDT-TRON source
   signs a TRC-20 `transfer` to the vault (routerless on TRON — the memo rides in
   the tx data), gated by a dedicated verify pass that decodes the calldata and

@@ -158,6 +158,14 @@ USDT_TRON_ASSET = "TRON.USDT-TR7NHQJEKQXGTCI8Q8ZY4PL8OTSZGJLJ6T"
 USDT_TRON_CONTRACT = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t"
 
 
+def test_token_contract_and_decimals_lookup():
+    contract, decimals = TronAdapter.token_contract_and_decimals(USDT_TRON_ASSET)
+    assert contract == USDT_TRON_CONTRACT
+    assert decimals == 6
+    with pytest.raises(ValueError, match="supported TRON token"):
+        TronAdapter.token_contract_and_decimals("TRON.NOPE-TXXXX")
+
+
 def test_to_token_native_converts_and_rejects_subunit():
     # 20 USDT (6 decimals) in THORChain 1e8 units -> 20_000_000 native.
     assert TronAdapter.to_token_native(2_000_000_000, 6) == 20_000_000
