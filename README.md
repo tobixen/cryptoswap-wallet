@@ -136,8 +136,21 @@ make test-network  # opt-in: read-only integration tests vs live THORChain
 make lint          # ruff check + format check
 ```
 
-The `network` tests are read-only (no funds moved); they guard against THORChain
-API drift and stale hard-coded asset strings.
+Most `network` tests are read-only (no funds moved); they guard against THORChain
+API drift and stale hard-coded asset strings, and run in CI (the **Integration
+(network)** workflow, on push/PR and a daily schedule) in addition to the
+release gate.
+
+One opt-in network test broadcasts a real **TRC-20 transfer on TRON's Nile
+testnet** (build → sign → broadcast → confirm → read the memo back on-chain) to
+exercise the USDT-TRON deposit mechanics end to end. It is skipped unless a
+funded Nile account is provided via env / CI secrets:
+
+```sh
+CRYPTOSWAP_WALLET_NILE_MNEMONIC=...  # Nile account holding the token + some TRX
+CRYPTOSWAP_WALLET_NILE_TOKEN=T...    # a TRC-20 contract (base58) the account holds
+CRYPTOSWAP_WALLET_NILE_RECIPIENT=T...  # optional; defaults to a self-transfer
+```
 
 ## Releasing
 

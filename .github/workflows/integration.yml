@@ -1,0 +1,38 @@
+name: Integration (network)
+
+# Live integration tests (`pytest -m network`) against public THORChain/TRON
+# endpoints, plus — when the Nile secrets below are configured — a real
+# build->sign->broadcast->confirm TRC-20 loop on TRON's Nile testnet.
+#
+# These hit third-party services, so they can fail for reasons unrelated to the
+# code (rate limits, node outages). They live in their own workflow so a
+# transient outage never blocks the unit CI in tests.yml; treat this as a
+# signal, not a hard merge gate.
+#
+# To enable the broadcast loop, set repo secrets (the test skips without them):
+#   CRYPTOSWAP_WALLET_NILE_MNEMONIC   seed of a Nile account holding the token + TRX
+#   CRYPTOSWAP_WALLET_NILE_TOKEN      a TRC-20 contract (base58) the account holds
+#   CRYPTOSWAP_WALLET_NILE_RECIPIENT  optional; defaults to a self-transfer
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  schedule:
+    - cron: "0 6 * * *"  # daily, so endpoint/API drift is caught even without commits
+  workflow_dispatch:
+
+jobs:
+  network:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+      - run: uv run pytest -m network -v
+        env:
+          CRYPTOSWAP_WALLET_NILE_MNEMONIC: ${{ secrets.CRYPTOSWAP_WALLET_NILE_MNEMONIC }}
+          CRYPTOSWAP_WALLET_NILE_TOKEN: ${{ secrets.CRYPTOSWAP_WALLET_NILE_TOKEN }}
+          CRYPTOSWAP_WALLET_NILE_RECIPIENT: ${{ secrets.CRYPTOSWAP_WALLET_NILE_RECIPIENT }}

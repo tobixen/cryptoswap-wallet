@@ -1,5 +1,8 @@
 """Tests for TRON address derivation and base58check encoding."""
 
+import os
+import time
+
 import pytest
 
 pytest.importorskip("eth_account")
@@ -254,6 +257,56 @@ def test_tron_build_unsigned_trc20_transfer_live_nile():
         assert decoded_amount == 1_000_000
         assert built.memo == memo
         assert adapter.sign(built)  # local signing must succeed for a fresh account
+
+
+# Env that funds the full broadcast loop below; see the test docstring.
+NILE_MNEMONIC = os.environ.get("CRYPTOSWAP_WALLET_NILE_MNEMONIC")
+NILE_TOKEN = os.environ.get("CRYPTOSWAP_WALLET_NILE_TOKEN")
+
+
+@pytest.mark.network
+@pytest.mark.skipif(
+    not (NILE_MNEMONIC and NILE_TOKEN),
+    reason="set CRYPTOSWAP_WALLET_NILE_MNEMONIC + _TOKEN (a funded Nile account "
+    "holding the TRC-20) to run the full broadcast loop",
+)
+def test_tron_trc20_broadcast_and_confirm_nile():
+    """FULL LOOP on the Nile TESTNET: build -> sign -> broadcast -> confirm a real
+    memo-carrying TRC-20 transfer, then read the memo back on-chain. Defaults to a
+    self-transfer of 1 base unit, so it only spends TRX for energy/bandwidth.
+
+    Gated on a funded Nile account provided via env (so CI runs it with the
+    CRYPTOSWAP_WALLET_NILE_* secrets, and it skips for everyone else):
+      CRYPTOSWAP_WALLET_NILE_MNEMONIC   seed of a Nile account holding the token + TRX
+      CRYPTOSWAP_WALLET_NILE_TOKEN      a TRC-20 contract (base58) the account holds
+      CRYPTOSWAP_WALLET_NILE_RECIPIENT  optional; defaults to a self-transfer
+    """
+    with TronAdapter(api_url="https://nile.trongrid.io") as adapter:
+        sender = adapter.derive_address(NILE_MNEMONIC)
+        recipient = os.environ.get("CRYPTOSWAP_WALLET_NILE_RECIPIENT", sender)
+        memo = f"=:TRON.USDT:{recipient}"
+        built = adapter.build_unsigned_trc20_transfer(
+            mnemonic=NILE_MNEMONIC, token=NILE_TOKEN, to=recipient, amount=1, memo=memo
+        )
+        txid = adapter.broadcast(adapter.sign(built))
+        assert txid
+
+        info: dict = {}
+        for _ in range(20):  # Nile blocks ~3s; wait up to ~60s for inclusion
+            info = adapter.get_transaction_info(txid)
+            if info.get("blockNumber"):
+                break
+            time.sleep(3)
+        assert info.get("blockNumber"), f"tx {txid} not confirmed in time"
+        # SUCCESS (or absent for a trivially-successful call), never a revert.
+        assert info.get("receipt", {}).get("result", "SUCCESS") == "SUCCESS"
+
+        # The memo must survive on-chain in the tx data field (the whole point —
+        # THORChain reads the swap memo from there, TRON having no router).
+        raw = adapter._post(
+            f"{adapter.api_url}/wallet/gettransactionbyid", json={"value": txid}
+        ).json()
+        assert bytes.fromhex(raw["raw_data"]["data"]).decode() == memo
 
 
 @pytest.mark.network

@@ -201,6 +201,19 @@ class TronAdapter(HttpClient):
         results = resp.json().get("constant_result") or []
         return int(results[0], 16) if results else 0
 
+    def get_transaction_info(self, txid: str) -> dict:
+        """Receipt for ``txid`` via ``/wallet/gettransactioninfobyid``.
+
+        Returns ``{}`` until the tx is in a block; once mined it carries
+        ``blockNumber`` and a ``receipt`` (``receipt.result == "SUCCESS"`` for a
+        contract call that did not revert). Used to confirm a broadcast.
+        """
+        resp = self._post(
+            f"{self.api_url}/wallet/gettransactioninfobyid", json={"value": txid}
+        )
+        resp.raise_for_status()
+        return resp.json()
+
     def token_balances(self, mnemonic: str) -> list[BalanceReport]:
         """TRC-20 balances (e.g. USDT-TRON) at the wallet's Tron address."""
         address = self.derive_address(mnemonic)
