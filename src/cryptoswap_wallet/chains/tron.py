@@ -26,7 +26,12 @@ from cryptoswap_wallet.chains.base import BalanceReport
 from cryptoswap_wallet.net import HttpClient
 from cryptoswap_wallet.swap import BroadcastError, Prepared, SwapRequest
 from cryptoswap_wallet.thorchain import Quote
-from cryptoswap_wallet.verify import TronSwapPlan, verify_tron_swap
+from cryptoswap_wallet.verify import (
+    TronSwapPlan,
+    TronTokenSwapPlan,
+    verify_tron_swap,
+    verify_tron_token_swap,
+)
 
 DEFAULT_TRON_DERIVATION = "m/44'/195'/0'/0/0"
 # Keyless public node serving the standard java-tron HTTP API. TronGrid
@@ -41,6 +46,15 @@ _B58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
 
 # TRC-20 tokens the wallet tracks for `balance` (symbol, contract base58, decimals).
 TRACKED_TOKENS = (("USDT", "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t", 6),)
+
+# THORChain asset string -> (base58 contract, decimals). THORChain upper-cases the
+# base58 contract in the asset string, which is lossy (base58 is case-sensitive),
+# so we recover the real mixed-case contract from TRACKED_TOKENS. Used to spend a
+# TRC-20 as a swap source.
+_TRON_TOKENS = {
+    f"TRON.{symbol}-{contract.upper()}": (contract, decimals)
+    for symbol, contract, decimals in TRACKED_TOKENS
+}
 
 # ERC-20/TRC-20 transfer(address,uint256) selector + a minimal ABI so building a
 # token transfer needs no on-chain ABI fetch.
@@ -240,6 +254,25 @@ class TronAdapter(HttpClient):
             )
         return sun
 
+    @staticmethod
+    def to_token_native(amount_thorchain: int, decimals: int) -> int:
+        """Convert a THORChain 1e8 amount to a token's native units; reject dust.
+
+        THORChain quotes every asset in 1e8 units; a token with ``decimals`` base
+        units has ``10**(8-decimals)`` of them per native unit. Rejects an amount
+        that isn't a whole number of the token's base unit.
+        """
+        if decimals > 8:
+            raise ValueError(f"token with {decimals} decimals (> 8) not supported")
+        factor = 10 ** (8 - decimals)
+        native, remainder = divmod(amount_thorchain, factor)
+        if remainder:
+            raise ValueError(
+                f"amount {amount_thorchain} (1e8 units) is not a whole number of "
+                f"the token's {decimals}-decimal base unit"
+            )
+        return native
+
     def build_unsigned_transfer(
         self,
         *,
@@ -352,9 +385,56 @@ class TronAdapter(HttpClient):
         )
         return Prepared(quote=quote, built=built, plan=plan, problems=problems)
 
+    def _build_and_verify_token(
+        self, *, quote: Quote, request: SwapRequest, now: int, mnemonic: str
+    ) -> Prepared:
+        """Build + gate a TRC-20 deposit (e.g. USDT-TRON) to the vault.
+
+        Routerless: a plain ``transfer(vault, amount)`` on the token with the swap
+        memo in the tx data. The gate decodes the built calldata and binds the
+        token contract, recipient, amount and memo — a mistake here is an
+        unrefundable loss.
+        """
+        try:
+            token, decimals = _TRON_TOKENS[request.from_asset]
+        except KeyError:
+            raise ValueError(
+                f"{request.from_asset} is not a supported TRON token source"
+            ) from None
+        native = self.to_token_native(request.amount, decimals)
+        vault = quote.inbound_address
+        memo = quote.memo or ""
+        built = self.build_unsigned_trc20_transfer(
+            mnemonic=mnemonic, token=token, to=vault, amount=native, memo=memo
+        )
+        recipient, transfer_amount = decode_trc20_transfer(built.call_data)
+        plan = TronTokenSwapPlan(
+            inbound_address=vault,
+            token=token,
+            amount=native,
+            memo=memo,
+            expiry=quote.expiry,
+            destination=request.destination,
+        )
+        problems = verify_tron_token_swap(
+            contract_type=built.contract_type,
+            trigger_to=built.to_address,
+            recipient=recipient,
+            transfer_amount=transfer_amount,
+            trx_value=built.amount_sun,
+            memo=built.memo,
+            plan=plan,
+            now=now,
+        )
+        return Prepared(quote=quote, built=built, plan=plan, problems=problems)
+
     def build_and_verify(
         self, *, quote: Quote, request: SwapRequest, now: int, mnemonic: str
     ) -> Prepared:
+        if "-" in request.from_asset:  # TRC-20 token source (e.g. USDT-TRON)
+            return self._build_and_verify_token(
+                quote=quote, request=request, now=now, mnemonic=mnemonic
+            )
         return self._build_and_verify(
             to=quote.inbound_address,
             amount_sun=self.to_sun(request.amount),

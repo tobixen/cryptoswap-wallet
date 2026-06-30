@@ -248,6 +248,68 @@ def verify_tron_swap(
 
 
 @dataclasses.dataclass(frozen=True)
+class TronTokenSwapPlan:
+    """What we intend a TRON TRC-20 (e.g. USDT-TRON) deposit to do.
+
+    TRON has no THORChain router, so the deposit is a plain ``transfer(vault,
+    amount)`` on the token contract with the swap ``memo`` in the tx data field.
+    ``token`` is the TRC-20 contract the ``TriggerSmartContract`` must target;
+    ``inbound_address`` is the vault the transfer must pay; ``amount`` is in the
+    token's native units.
+    """
+
+    inbound_address: str  # base58 vault (the transfer recipient)
+    token: str  # base58 TRC-20 contract (the TriggerSmartContract target)
+    amount: int  # token native units transferred to the vault
+    memo: str
+    expiry: int
+    destination: str = ""
+
+
+def verify_tron_token_swap(
+    *,
+    contract_type: str,
+    trigger_to: str,
+    recipient: str,
+    transfer_amount: int,
+    trx_value: int,
+    memo: str,
+    plan: TronTokenSwapPlan,
+    now: int,
+) -> list[str]:
+    """Return reasons a TRON TRC-20 deposit does not match ``plan``; empty is safe.
+
+    Binds every field that can cause irreversible loss: the trigger must target
+    the intended token contract, the decoded ``transfer`` must pay the vault the
+    intended amount, no native TRX may ride along, and the memo (carried in the
+    tx data) must match the quote and pay the destination. ``recipient``,
+    ``transfer_amount`` and ``memo`` are the already-decoded values.
+    """
+    problems: list[str] = []
+
+    if now >= plan.expiry:
+        problems.append(f"quote expired (now {now} >= expiry {plan.expiry})")
+    if contract_type != "TriggerSmartContract":
+        problems.append(f"contract type {contract_type!r} != 'TriggerSmartContract'")
+    if trigger_to != plan.token:
+        problems.append(f"tx triggers {trigger_to} != token contract {plan.token}")
+    if recipient != plan.inbound_address:
+        problems.append(f"transfer pays {recipient} != vault {plan.inbound_address}")
+    if transfer_amount != plan.amount:
+        problems.append(f"transfer amount {transfer_amount} != intended {plan.amount}")
+    if trx_value != 0:
+        problems.append(f"token deposit must not send TRX value (got {trx_value} sun)")
+    if memo != plan.memo:
+        problems.append(f"tx memo {memo!r} != intended {plan.memo!r}")
+    if not memo_pays_destination(plan.destination, plan.memo):
+        problems.append(
+            f"quoted memo {plan.memo!r} does not pay destination {plan.destination}"
+        )
+
+    return problems
+
+
+@dataclasses.dataclass(frozen=True)
 class EthSwapPlan:
     """What we intend an ETH deposit transaction to do (from a THORChain quote)."""
 

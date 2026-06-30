@@ -152,6 +152,99 @@ def _fake_built(to, amount_sun, memo, *, amount_override=None):
     )
 
 
+# --- TRC-20 swap source (USDT-TRON) build/verify wiring ---
+
+USDT_TRON_ASSET = "TRON.USDT-TR7NHQJEKQXGTCI8Q8ZY4PL8OTSZGJLJ6T"
+USDT_TRON_CONTRACT = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t"
+
+
+def test_to_token_native_converts_and_rejects_subunit():
+    # 20 USDT (6 decimals) in THORChain 1e8 units -> 20_000_000 native.
+    assert TronAdapter.to_token_native(2_000_000_000, 6) == 20_000_000
+    assert TronAdapter.to_token_native(100, 6) == 1  # one base unit
+    with pytest.raises(ValueError, match="base unit"):
+        TronAdapter.to_token_native(150, 6)  # sub-unit dust (1e8 not divisible)
+
+
+def _trc20_calldata(to_base58: str, amount: int) -> str:
+    from tronpy.abi import trx_abi
+
+    return (
+        "a9059cbb" + trx_abi.encode(["address", "uint256"], [to_base58, amount]).hex()
+    )
+
+
+def _fake_token_built(to_vault, amount, memo, *, contract=USDT_TRON_CONTRACT):
+    from cryptoswap_wallet.chains.tron import BuiltTronTx
+
+    return BuiltTronTx(
+        tx=None,
+        priv=None,
+        contract_type="TriggerSmartContract",
+        to_address=contract,
+        amount_sun=0,
+        memo=memo,
+        call_data=_trc20_calldata(to_vault, amount),
+    )
+
+
+def _token_request_and_quote():
+    from types import SimpleNamespace
+
+    from cryptoswap_wallet.swap import SwapRequest
+
+    vault = "TWhCKmPTJL8k9ugzoQStN68KcAWUSzWWas"
+    dest = "bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu"
+    memo = f"=:b:{dest}:30344"
+    quote = SimpleNamespace(inbound_address=vault, memo=memo, expiry=2000)
+    request = SwapRequest(
+        from_asset=USDT_TRON_ASSET,
+        to_asset="BTC.BTC",
+        amount=2_000_000_000,
+        destination=dest,
+    )
+    return vault, memo, quote, request
+
+
+def test_tron_token_build_and_verify_clean(monkeypatch):
+    adapter = TronAdapter()
+    vault, memo, quote, request = _token_request_and_quote()
+    monkeypatch.setattr(
+        adapter,
+        "build_unsigned_trc20_transfer",
+        lambda *, mnemonic, token, to, amount, memo, **kw: _fake_token_built(
+            to, amount, memo
+        ),
+    )
+    prepared = adapter.build_and_verify(
+        quote=quote, request=request, now=1000, mnemonic="x"
+    )
+    assert prepared.problems == []
+    assert prepared.safe
+    assert prepared.plan.token == USDT_TRON_CONTRACT
+    assert prepared.plan.inbound_address == vault
+    assert prepared.plan.amount == 20_000_000  # 20 USDT, 6 decimals
+
+
+def test_tron_token_gate_flags_tampered_recipient(monkeypatch):
+    adapter = TronAdapter()
+    _vault, memo, quote, request = _token_request_and_quote()
+    # Build pays a DIFFERENT recipient than the quoted vault -> must be unsafe.
+    monkeypatch.setattr(
+        adapter,
+        "build_unsigned_trc20_transfer",
+        lambda *, mnemonic, token, to, amount, memo, **kw: _fake_token_built(
+            "TUEZSdKsoDHQMeZwihtdoBiN46zxhGWYdH",
+            amount,
+            memo,  # valid, but not the vault
+        ),
+    )
+    prepared = adapter.build_and_verify(
+        quote=quote, request=request, now=1000, mnemonic="x"
+    )
+    assert not prepared.safe
+
+
 def test_tron_build_and_verify_deposit_wiring(monkeypatch):
     adapter = TronAdapter()
     monkeypatch.setattr(

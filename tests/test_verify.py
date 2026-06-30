@@ -10,11 +10,13 @@ from cryptoswap_wallet.verify import (
     SendPlan,
     SwapPlan,
     TronSwapPlan,
+    TronTokenSwapPlan,
     TxOutput,
     verify_btc_send,
     verify_btc_swap,
     verify_eth_swap,
     verify_tron_swap,
+    verify_tron_token_swap,
 )
 
 VAULT = "bc1qct4mxayrdy96d4py20l4u02mu06r667f42p9fp"
@@ -349,3 +351,91 @@ def test_tron_lp_deposit_no_destination_check():
         inbound_address=TRON_VAULT, amount_sun=1_500_000, memo="+:TRON.TRX", expiry=2000
     )
     assert tron_verify(memo="+:TRON.TRX", plan=plan) == []
+
+
+# --- TRON TRC-20 token deposit verify gate (USDT-TRON source) ---
+
+TRON_TOKEN = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t"  # USDT-TRON contract (base58)
+TRON_TOKEN_MEMO = f"=:b:{TRON_DEST}:6700000"
+TRON_TOKEN_PLAN = TronTokenSwapPlan(
+    inbound_address=TRON_VAULT,
+    token=TRON_TOKEN,
+    amount=20_000_000,  # 20 USDT (6 decimals)
+    memo=TRON_TOKEN_MEMO,
+    expiry=2000,
+    destination=TRON_DEST,
+)
+
+
+def tron_token_verify(
+    contract_type="TriggerSmartContract",
+    trigger_to=TRON_TOKEN,
+    recipient=TRON_VAULT,
+    transfer_amount=20_000_000,
+    trx_value=0,
+    memo=TRON_TOKEN_MEMO,
+    now=1000,
+    plan=TRON_TOKEN_PLAN,
+):
+    return verify_tron_token_swap(
+        contract_type=contract_type,
+        trigger_to=trigger_to,
+        recipient=recipient,
+        transfer_amount=transfer_amount,
+        trx_value=trx_value,
+        memo=memo,
+        plan=plan,
+        now=now,
+    )
+
+
+def test_tron_token_valid_has_no_problems():
+    assert tron_token_verify() == []
+
+
+def test_tron_token_wrong_contract_type():
+    assert any(
+        "contract" in p.lower()
+        for p in tron_token_verify(contract_type="TransferContract")
+    )
+
+
+def test_tron_token_trigger_not_targeting_token():
+    # The TriggerSmartContract must call the token contract, not something else.
+    assert any("token" in p.lower() for p in tron_token_verify(trigger_to=TRON_VAULT))
+
+
+def test_tron_token_wrong_recipient():
+    # The transfer must pay the vault; a swapped recipient is irreversible loss.
+    assert any(
+        "vault" in p.lower() for p in tron_token_verify(recipient="TWrongVaultAddr")
+    )
+
+
+def test_tron_token_wrong_amount():
+    assert any("amount" in p for p in tron_token_verify(transfer_amount=20_000_001))
+
+
+def test_tron_token_rejects_trx_value():
+    # A token transfer must not also move native TRX.
+    assert any("TRX" in p for p in tron_token_verify(trx_value=1))
+
+
+def test_tron_token_wrong_memo():
+    assert any("memo" in p.lower() for p in tron_token_verify(memo="=:ETH.ETH:0xdead"))
+
+
+def test_tron_token_expired():
+    assert any("expired" in p for p in tron_token_verify(now=3000))
+
+
+def test_tron_token_rejects_memo_not_paying_destination():
+    plan = TronTokenSwapPlan(
+        inbound_address=TRON_VAULT,
+        token=TRON_TOKEN,
+        amount=20_000_000,
+        memo=TRON_TOKEN_MEMO,
+        expiry=2000,
+        destination="0x2222222222222222222222222222222222222222",
+    )
+    assert any("destination" in p.lower() for p in tron_token_verify(plan=plan))

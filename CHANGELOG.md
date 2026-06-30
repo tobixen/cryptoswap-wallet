@@ -12,13 +12,16 @@ automatically from git tags (PEP 440 / SemVer).
   (HD seeds + raw keys, AES-256-GCM, atomic writes).
 - Chain adapters: BTC (bitcoinlib), ETH + ERC-20 (eth-account/eth-abi),
   TRON (address + balance).
-- Swaps: BTC, ETH (native), TRX (native) and USDT-ETH (ERC-20) as sources; BTC,
+- Swaps: BTC, ETH (native), TRX (native), USDT-ETH (ERC-20) and USDT-TRON
+  (TRC-20) as sources; BTC,
   ETH, TRX, USDT-TRON, USDT-ETH and (external-`--dest`-only) LTC, DOGE, BCH as
   destinations. `--amount max` sweep for BTC/ETH (swap and add-liquidity) and
   for ERC-20 token sources like USDT-ETH (swap; the whole token balance, exact
-  since gas is paid in ETH). TRX
-  source signs a native
-  TransferContract with the memo in tx data (tronpy), via a keyless public node.
+  since gas is paid in ETH). The TRX source signs a native TransferContract with
+  the memo in tx data (tronpy), via a keyless public node; the USDT-TRON source
+  signs a TRC-20 `transfer` to the vault (routerless on TRON — the memo rides in
+  the tx data), gated by a dedicated verify pass that decodes the calldata and
+  binds the token, recipient, amount and memo.
 - Permissive `--dest` sanity check (network/format) to catch gross typos before
   a swap is quoted or broadcast.
 - `swap --tolerance-bps` (default 300) to widen the slippage/fee tolerance for

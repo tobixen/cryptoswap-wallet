@@ -98,6 +98,18 @@ def test_eth_usdt_source_quote_live():
     assert quote.expected_amount_out > 0
 
 
+def test_tron_usdt_source_quote_live():
+    # USDT-TRON as a swap source: routerless (TRON has no THORChain router), so
+    # the deposit is a plain TRC-20 transfer to inbound_address with the memo in
+    # the tx data. Guards that mechanism and the memo paying the destination.
+    with ThorchainClient() as thor:
+        quote = thor.quote_swap(ASSET["USDT-TRON"], "BTC.BTC", 2_000_000_000, BTC_DEST)
+    assert quote.router is None  # routerless — direct transfer, not depositWithExpiry
+    assert quote.inbound_address  # the vault the transfer must pay
+    assert quote.expected_amount_out > 0
+    assert quote.memo and BTC_DEST in quote.memo
+
+
 @pytest.mark.parametrize(
     ("asset", "dest"),
     [("LTC", LTC_DEST), ("DOGE", DOGE_DEST), ("BCH", BCH_DEST)],

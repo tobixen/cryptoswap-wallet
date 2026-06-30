@@ -32,7 +32,7 @@ The wallet is still under rapid development as of 2026-06-29.  Missing features 
 | ETH       |  ✅  |  ✅ |  ✅ |  ✅  |      |  ◑   |  ✅ |
 | USDT-ETH  |  ✅  |  ✅ |  ✅ |  ✅  |      |  ✅  |     |
 | TRX       |  ✅  |  ✅ |  ✅ |  ✅  |      |      |  ✅ |
-| USDT-TRON |  ✅  |  ✅ |  ✅ |      |      |      |     |
+| USDT-TRON |  ✅  |  ✅ |  ✅ |  ✅  |      |      |     |
 | LTC       |      |     |  ✅ |      |      |      |     |
 | DOGE      |      |     |  ✅ |      |      |      |     |
 | BCH       |      |     |  ✅ |      |      |      |     |
@@ -73,7 +73,7 @@ capability grid above for the per-feature detail.
 | TRX | TRON | TRON | partial | no `send` yet |
 | BSC / BNB | BNB Smart Chain | EVM | none | |
 | USDT-ETH | Tether | ERC-20 token | partial | no `send`/liquidity yet |
-| USDT-TRON | Tether | TRC-20 token | partial | no `swap`-from/`send` yet (TRC-20 deposit) |
+| USDT-TRON | Tether | TRC-20 token | partial | no `send`/sweep yet |
 | USDT-BSC | Tether | ? | none | Currently halted on THORChain.  Available on Maya |
 | USBT-SOL | Tether | ? | none | Not currently available on THORChain/Maya |
 | AVAX | Avalanche C-Chain | EVM | none | |

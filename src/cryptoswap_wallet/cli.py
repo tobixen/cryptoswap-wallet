@@ -684,14 +684,17 @@ def _swap_from_eth(args: argparse.Namespace) -> int:
 
 
 def _swap_from_tron(args: argparse.Namespace) -> int:
-    if "-" in ASSET[args.from_]:
-        print(
-            "TRC-20 tokens are not a swap source yet (native TRX only)", file=sys.stderr
-        )
-        return 2
+    is_token = "-" in ASSET[args.from_]
     if args.amount == "max":
         print("--amount max is not supported for TRON yet", file=sys.stderr)
         return 2
+    if is_token:
+        _warn(
+            "TRC-20 source — the transfer burns TRX for energy (~15 TRX cap), "
+            "separate from the USDT sent:",
+            "keep spare TRX in the account, and note TRON deposits are routerless "
+            "and unrefundable if the memo/vault is wrong (the verify gate checks both)",
+        )
 
     mnemonic = _load_mnemonic(args)
     dest = _resolve_destination(args, mnemonic)
@@ -731,11 +734,14 @@ def _swap_from_tron(args: argparse.Namespace) -> int:
         out = prepared.quote.expected_amount_out / THORCHAIN_UNIT
         vault = prepared.quote.inbound_address
         print(f"via:     {backend.name}")
-        print(f"send:    {prepared.plan.amount_sun} sun to {vault}")
+        if is_token:
+            print(f"send:    {args.amount} {args.from_} to {vault}")
+        else:
+            print(f"send:    {prepared.plan.amount_sun} sun to {vault}")
         print(f"expect:  {out:.8f} {args.to_} -> {dest}")
         print(f"memo:    {prepared.quote.memo}")
-        print("trx fee: paid from spare TRX/bandwidth, NOT the sent amount")
-        print("         -> keep some TRX headroom below your balance (~1 TRX)")
+        print("trx fee: paid from spare TRX (bandwidth/energy), NOT the sent amount")
+        print("         -> keep some TRX headroom below your balance")
         return _confirm_and_execute(prepared, adapter, args)
 
 
