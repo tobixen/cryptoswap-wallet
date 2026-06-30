@@ -48,7 +48,10 @@ APPROVE_GAS = 70000
 TOKEN_DEPOSIT_GAS = 200000
 
 # ERC-20 tokens the wallet tracks for `balance` (symbol, contract, decimals).
-TRACKED_TOKENS = (("USDT", "0xdac17f958d2ee523a2206206994597c13d831ec7", 6),)
+TRACKED_TOKENS = (
+    ("USDT", "0xdac17f958d2ee523a2206206994597c13d831ec7", 6),
+    ("USDC", "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48", 6),
+)
 
 # Known token decimals — don't trust an RPC value that determines how much we
 # send. Derived from TRACKED_TOKENS so the contract address is listed once.

@@ -31,6 +31,7 @@ The wallet is still under rapid development as of 2026-06-29.  Missing features 
 | BTC       |  ✅  |  ✅ |  ✅ |  ✅  |  ✅  |  ✅  |  ✅ |
 | ETH       |  ✅  |  ✅ |  ✅ |  ✅  |      |  ◑   |  ✅ |
 | USDT-ETH  |  ✅  |  ✅ |  ✅ |  ✅  |      |  ✅  |     |
+| USDC-ETH  |  ✅  |  ✅ |  ✅ |  ✅  |      |  ✅  |     |
 | TRX       |  ✅  |  ✅ |  ✅ |  ✅  |      |      |  ✅ |
 | USDT-TRON |  ✅  |  ✅ |  ✅ |  ✅  |      |  ✅  |     |
 | LTC       |      |     |  ✅ |      |      |      |     |
@@ -79,7 +80,7 @@ capability grid above for the per-feature detail.
 | AVAX | Avalanche C-Chain | EVM | none | |
 | BASE | Base (ETH L2) | EVM | none | |
 | ARB | Arbitrum (ETH L2) | EVM | none | Maya-only |
-| USDC | USD Coin (ETH/BSC/AVAX/BASE/ARB) | ERC-20 token | none | |
+| USDC | USD Coin (ETH/BSC/AVAX/BASE/ARB) | ERC-20 token | partial | ETH done (no `send` yet, like USDT-ETH); BSC/AVAX/BASE/ARB need new EVM chain adapters |
 | LTC | Litecoin | UTXO | partial | destination only (via `--dest`) |
 | DOGE | Dogecoin | UTXO | partial | destination only (via `--dest`) |
 | BCH | Bitcoin Cash | UTXO | partial | destination only (via `--dest`) |

@@ -95,16 +95,16 @@ def test_erc20_fetch_token_balance_encodes_and_decodes(monkeypatch):
     assert call["data"] == "0x70a08231" + "0" * 24 + owner[2:].lower()
 
 
-def test_eth_token_balances_reports_usdt(monkeypatch):
+def test_eth_token_balances_report_tracked_tokens(monkeypatch):
     adapter = EthAdapter()
     monkeypatch.setattr(
         adapter, "fetch_token_balance", lambda token, address: 2_500_000
     )
     reports = adapter.token_balances(MNEMONIC)
-    assert [r.symbol for r in reports] == ["USDT-ETH"]
-    assert reports[0].decimals == 6
-    assert reports[0].confirmed == 2_500_000
+    assert [r.symbol for r in reports] == ["USDT-ETH", "USDC-ETH"]
+    assert all(r.decimals == 6 and r.confirmed == 2_500_000 for r in reports)
     assert reports[0].format().startswith("USDT-ETH: 2.50")
+    assert reports[1].format().startswith("USDC-ETH: 2.50")
 
 
 def test_eth_build_and_verify_clean():
@@ -275,9 +275,8 @@ def test_eth_token_balance_live():
     """Live ERC-20 balanceOf against the public RPC — guards the call encoding
     and decoding against drift. Asserts shape, not an exact (mutable) balance."""
     reports = EthAdapter().token_balances(MNEMONIC)
-    assert [r.symbol for r in reports] == ["USDT-ETH"]
-    assert reports[0].decimals == 6
-    assert reports[0].confirmed >= 0
+    assert [r.symbol for r in reports] == ["USDT-ETH", "USDC-ETH"]
+    assert all(r.decimals == 6 and r.confirmed >= 0 for r in reports)
 
 
 # --- JSON-RPC error handling (broadcast + malformed responses) ---

@@ -47,8 +47,12 @@ def test_hardcoded_usdt_assets_still_quote_live():
         to_eth = thor.quote_swap(
             ASSET["BTC"], ASSET["USDT-ETH"], 178100, ETH_DEST, tolerance_bps=None
         )
+        to_usdc_eth = thor.quote_swap(
+            ASSET["BTC"], ASSET["USDC-ETH"], 178100, ETH_DEST, tolerance_bps=None
+        )
     assert to_tron.expected_amount_out > 0
     assert to_eth.expected_amount_out > 0
+    assert to_usdc_eth.expected_amount_out > 0
 
 
 def test_mimir_exposes_lp_pause_toggle_live():

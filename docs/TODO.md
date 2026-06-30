@@ -119,6 +119,11 @@ lowest-price routing across backends.
 
 - **Maya-only assets**: expose DASH, ZEC, ADA (Cardano), ARB (Arbitrum) — Maya
   has pools THORChain lacks; just needs `ASSET` entries + dest derivation.
+- **USDC on cheaper chains**: ETH.USDC is done (mirrors USDT-ETH). THORChain also
+  pools USDC on BSC/AVAX/BASE and Maya on ARB — all far cheaper to use than ETH
+  mainnet. Each needs a new EVM chain adapter (RPC, chain-id, native coin, dest
+  validation), so this is the moment to do A2/A3 (generalize `EthAdapter` into a
+  shared EVM code path) rather than copy it per chain.
 - **`send` to external address**: see *Next up* item 1 (BTC first).
 - **BasicSwap backend** (trustless P2P / privacy / XMR): orchestrate its daemon
   via API; needs full nodes (heavy) and a different custody seam. Future.

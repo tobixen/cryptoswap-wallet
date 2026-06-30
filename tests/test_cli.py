@@ -321,6 +321,7 @@ def test_asset_map():
     assert ASSET["TRX"] == "TRON.TRX"
     assert ASSET["USDT-TRON"].startswith("TRON.USDT-")
     assert ASSET["USDT-ETH"].startswith("ETH.USDT-")
+    assert ASSET["USDC-ETH"].startswith("ETH.USDC-")
     # Destination-only assets (item 3).
     assert ASSET["LTC"] == "LTC.LTC"
     assert ASSET["DOGE"] == "DOGE.DOGE"
