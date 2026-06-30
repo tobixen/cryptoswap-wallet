@@ -384,7 +384,9 @@ def test_tron_trc20_broadcast_and_confirm_nile():
     """
     with TronAdapter(api_url="https://nile.trongrid.io") as adapter:
         sender = adapter.derive_address(NILE_MNEMONIC)
-        recipient = os.environ.get("CRYPTOSWAP_WALLET_NILE_RECIPIENT", sender)
+        # `or sender`, not a .get() default: CI injects an *unset* optional secret
+        # as an empty string, which would otherwise become an invalid recipient.
+        recipient = os.environ.get("CRYPTOSWAP_WALLET_NILE_RECIPIENT") or sender
         memo = f"=:TRON.USDT:{recipient}"
         built = adapter.build_unsigned_trc20_transfer(
             mnemonic=NILE_MNEMONIC, token=NILE_TOKEN, to=recipient, amount=1, memo=memo
