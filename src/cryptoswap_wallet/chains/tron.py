@@ -138,9 +138,15 @@ class TronAdapter(HttpClient):
     chain = "TRON"
     asset = "TRON.TRX"
 
-    def __init__(self, api_url: str = DEFAULT_TRON_API, timeout: float = 20.0) -> None:
+    def __init__(
+        self,
+        api_url: str = DEFAULT_TRON_API,
+        timeout: float = 20.0,
+        bip39_passphrase: str = "",
+    ) -> None:
         super().__init__(timeout)
         self.api_url = api_url.rstrip("/")
+        self.bip39_passphrase = bip39_passphrase
         # tronpy clients spawned for tx-building each hold their own HTTP session;
         # track them so close() can release the sockets (they must outlive build
         # for broadcast, which always runs inside this adapter's context).
@@ -158,7 +164,9 @@ class TronAdapter(HttpClient):
         super().close()
 
     def _key(self, mnemonic: str, path: str) -> LocalAccount:
-        return Account.from_mnemonic(mnemonic, account_path=path)
+        return Account.from_mnemonic(
+            mnemonic, passphrase=self.bip39_passphrase, account_path=path
+        )
 
     def derive_address(self, mnemonic: str, path: str = DEFAULT_TRON_DERIVATION) -> str:
         addr20 = bytes.fromhex(self._key(mnemonic, path).address[2:])

@@ -133,6 +133,34 @@ def test_parse_inbound_addresses():
     assert chains["TRON"].tradable is False  # halted
 
 
+def test_parse_inbound_addresses_tolerates_missing_optional_fields():
+    # A partial/degraded thornode entry (missing gas_rate, dust_threshold, …)
+    # must not raise KeyError mid-swap-prep — it degrades to defaults, and the
+    # halt/pause flags still gate tradability.
+    chains = parse_inbound_addresses([{"chain": "BTC", "halted": True}])
+    assert chains["BTC"].gas_rate == 0
+    assert chains["BTC"].gas_rate_units == ""
+    assert chains["BTC"].outbound_fee == 0
+    assert chains["BTC"].dust_threshold == 0
+    assert chains["BTC"].tradable is False
+
+
+def test_quote_swap_default_tolerance_matches_protocol():
+    # The client's default must equal the ThorchainLike protocol default, so the
+    # backend selected on the default tolerance is the same one prepare_swap
+    # re-quotes against.
+    import inspect
+
+    from cryptoswap_wallet.swap import DEFAULT_TOLERANCE_BPS
+
+    default = (
+        inspect.signature(ThorchainClient.quote_swap)
+        .parameters["tolerance_bps"]
+        .default
+    )
+    assert default == DEFAULT_TOLERANCE_BPS
+
+
 @pytest.mark.parametrize(
     ("raw", "expected"),
     [

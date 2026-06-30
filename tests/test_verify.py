@@ -275,6 +275,38 @@ def test_eth_accepts_memo_paying_destination():
     assert eth_verify(plan=plan) == []
 
 
+def test_eth_rejects_case_corrupted_non_evm_destination():
+    # ETH -> TRON: a base58 destination is case-SENSITIVE. A memo carrying the
+    # destination with mangled case pays a DIFFERENT address and must be
+    # rejected. The old `lower()`-both-sides check wrongly accepted it; the gate
+    # now defers to memo_pays_destination (which only case-folds 0x addresses).
+    dest = "TJRabPrwbZy45sbavfcjinPJC18kjpRTv8"
+    memo = f"=:TRON.TRX:{dest.lower()}:0"
+    plan = EthSwapPlan(
+        inbound_address=ETH_VAULT,
+        amount_wei=10**16,
+        memo=memo,
+        expiry=2000,
+        destination=dest,
+    )
+    problems = eth_verify(plan=plan, data="0x" + memo.encode().hex())
+    assert any("destination" in p.lower() for p in problems)
+
+
+def test_eth_accepts_recased_evm_destination():
+    # EVM destinations stay case-insensitive (THORChain may re-case them).
+    dest = "0x1111111111111111111111111111111111111111"
+    memo = f"=:e:{dest.upper()}:0"
+    plan = EthSwapPlan(
+        inbound_address=ETH_VAULT,
+        amount_wei=10**16,
+        memo=memo,
+        expiry=2000,
+        destination=dest,
+    )
+    assert eth_verify(plan=plan, data="0x" + memo.encode().hex()) == []
+
+
 # --- TRON deposit verify gate (swap source + liquidity) ---
 
 TRON_VAULT = "TNVaVKErJ3pdC2nVjC4d4n6Te8H1Lz9Yth"

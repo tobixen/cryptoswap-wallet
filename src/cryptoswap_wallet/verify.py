@@ -351,7 +351,7 @@ def verify_eth_swap(
         problems.append(f"calldata {data!r} != memo-encoded {expected_data!r}")
     if chain_id != plan.chain_id:
         problems.append(f"chainId {chain_id} != {plan.chain_id}")
-    if plan.destination and plan.destination.lower() not in plan.memo.lower():
+    if not memo_pays_destination(plan.destination, plan.memo):
         problems.append(
             f"quoted memo {plan.memo!r} does not pay destination {plan.destination}"
         )

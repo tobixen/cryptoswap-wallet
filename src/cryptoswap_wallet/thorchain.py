@@ -21,6 +21,10 @@ if TYPE_CHECKING:
 
 THORCHAIN_UNIT = 100_000_000
 DEFAULT_BASE_URL = "https://thornode.thorchain.liquify.com"
+# Default price tolerance for a quote, in basis points. Defined here (not in
+# swap.py) so the client default matches the ThorchainLike protocol default
+# without a circular import.
+DEFAULT_TOLERANCE_BPS = 300
 
 
 class ThorchainError(RuntimeError):
@@ -245,12 +249,16 @@ def parse_inbound_addresses(payload: list[dict[str, Any]]) -> dict[str, ChainSta
     """Parse the ``/thorchain/inbound_addresses`` array, keyed by chain."""
     chains: dict[str, ChainStatus] = {}
     for entry in payload:
-        chains[entry["chain"]] = ChainStatus(
-            chain=entry["chain"],
-            gas_rate=_int(entry["gas_rate"]),
-            gas_rate_units=entry["gas_rate_units"],
-            outbound_fee=_int(entry["outbound_fee"]),
-            dust_threshold=_int(entry["dust_threshold"]),
+        # Read every field with .get: a partial/degraded thornode response must
+        # degrade to defaults (and let the halt/pause flags gate tradability),
+        # not raise KeyError mid-swap-prep.
+        chain = entry.get("chain", "")
+        chains[chain] = ChainStatus(
+            chain=chain,
+            gas_rate=_int(entry.get("gas_rate", 0)),
+            gas_rate_units=entry.get("gas_rate_units", ""),
+            outbound_fee=_int(entry.get("outbound_fee", 0)),
+            dust_threshold=_int(entry.get("dust_threshold", 0)),
             halted=bool(entry.get("halted", False)),
             global_trading_paused=bool(entry.get("global_trading_paused", False)),
             chain_trading_paused=bool(entry.get("chain_trading_paused", False)),
@@ -372,7 +380,7 @@ class ThorchainClient(HttpClient):
         *,
         streaming_interval: int | None = None,
         streaming_quantity: int | None = None,
-        tolerance_bps: int | None = None,
+        tolerance_bps: int | None = DEFAULT_TOLERANCE_BPS,
     ) -> Quote:
         """Fetch a swap quote. ``amount`` is in 1e8 base units of ``from_asset``."""
         params: dict[str, Any] = {

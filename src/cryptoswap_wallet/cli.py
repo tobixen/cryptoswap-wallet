@@ -14,10 +14,10 @@ import argparse
 import dataclasses
 import getpass
 import json
-import math
 import os
 import sys
 import time
+from decimal import ROUND_HALF_EVEN, Decimal, InvalidOperation
 from pathlib import Path
 
 from cryptoswap_wallet.addresses import validate_destination_address
@@ -77,14 +77,14 @@ def _passphrase(*, confirm: bool = False) -> str:
     return pw
 
 
-def _btc_adapter(args: argparse.Namespace):  # noqa: ANN202 (BtcAdapter, lazy import)
+def _btc_adapter(args: argparse.Namespace, passphrase: str = ""):  # noqa: ANN202
     from cryptoswap_wallet.chains.btc import DEFAULT_ESPLORA, BtcAdapter
 
     url = args.esplora or os.environ.get("CRYPTOSWAP_WALLET_ESPLORA") or DEFAULT_ESPLORA
-    return BtcAdapter(url)
+    return BtcAdapter(url, bip39_passphrase=passphrase)
 
 
-def _eth_adapter(args: argparse.Namespace):  # noqa: ANN202 (EthAdapter, lazy import)
+def _eth_adapter(args: argparse.Namespace, passphrase: str = ""):  # noqa: ANN202
     from cryptoswap_wallet.chains.eth import DEFAULT_RPC, EthAdapter
 
     url = (
@@ -92,10 +92,10 @@ def _eth_adapter(args: argparse.Namespace):  # noqa: ANN202 (EthAdapter, lazy im
         or os.environ.get("CRYPTOSWAP_WALLET_ETH_RPC")
         or DEFAULT_RPC
     )
-    return EthAdapter(url)
+    return EthAdapter(url, bip39_passphrase=passphrase)
 
 
-def _tron_adapter(args: argparse.Namespace):  # noqa: ANN202 (TronAdapter, lazy import)
+def _tron_adapter(args: argparse.Namespace, passphrase: str = ""):  # noqa: ANN202
     from cryptoswap_wallet.chains.tron import DEFAULT_TRON_API, TronAdapter
 
     url = (
@@ -103,19 +103,29 @@ def _tron_adapter(args: argparse.Namespace):  # noqa: ANN202 (TronAdapter, lazy 
         or os.environ.get("CRYPTOSWAP_WALLET_TRON_API")
         or DEFAULT_TRON_API
     )
-    return TronAdapter(url)
+    return TronAdapter(url, bip39_passphrase=passphrase)
 
 
-def _wallet_adapters(args: argparse.Namespace) -> list:  # noqa: ANN201
+def _wallet_adapters(args: argparse.Namespace, passphrase: str = "") -> list:  # noqa: ANN201
     """Adapters whose balances `balance` reports — add a chain here and it scales."""
-    return [_btc_adapter(args), _eth_adapter(args), _tron_adapter(args)]
+    return [
+        _btc_adapter(args, passphrase),
+        _eth_adapter(args, passphrase),
+        _tron_adapter(args, passphrase),
+    ]
 
 
-def _load_mnemonic(args: argparse.Namespace) -> str:
+def _load_mnemonic(args: argparse.Namespace) -> tuple[str, str]:
+    """Return ``(mnemonic, bip39_passphrase)`` for the selected HD key.
+
+    The BIP-39 passphrase is ``""`` when the key has none (and always ``""`` for
+    a v1 keystore, where it was stripped on load — see keystore.ENVELOPE_VERSION).
+    """
     keystore = Keystore.load(_keystore_path(args), _passphrase())
     for entry in keystore.entries:
         if isinstance(entry, HdKey) and (args.key is None or entry.label == args.key):
-            return entry.mnemonic.reveal()
+            passphrase = entry.passphrase.reveal() if entry.passphrase else ""
+            return entry.mnemonic.reveal(), passphrase
     raise SystemExit("no matching HD key in keystore")
 
 
@@ -165,7 +175,9 @@ def cmd_add_hd(args: argparse.Namespace) -> int:
 
         print(
             "BTC receive address:",
-            BtcAdapter().derive_address(mnemonic, BTC_RECEIVE_PATH),
+            BtcAdapter(bip39_passphrase=args.bip39_passphrase or "").derive_address(
+                mnemonic, BTC_RECEIVE_PATH
+            ),
         )
         print(
             "the new seed is stored ENCRYPTED in the keystore; back up the keystore "
@@ -180,6 +192,10 @@ def cmd_show_seed(args: argparse.Namespace) -> int:
     for entry in keystore.entries:
         if isinstance(entry, HdKey) and (args.key is None or entry.label == args.key):
             print(entry.mnemonic.reveal())
+            if entry.passphrase is not None:
+                # Back up the BIP-39 passphrase too — without it the words derive
+                # a different (empty-passphrase) wallet.
+                print(f"BIP39 passphrase: {entry.passphrase.reveal()}")
             return 0
     raise SystemExit("no matching HD key in keystore")
 
@@ -208,10 +224,15 @@ def cmd_address(args: argparse.Namespace) -> int:
     from cryptoswap_wallet.chains.eth import EthAdapter
     from cryptoswap_wallet.chains.tron import TronAdapter
 
-    mnemonic = _load_mnemonic(args)
-    print("BTC: ", BtcAdapter().derive_address(mnemonic, BTC_RECEIVE_PATH))
-    print("ETH: ", EthAdapter().derive_address(mnemonic))
-    print("TRON:", TronAdapter().derive_address(mnemonic))
+    mnemonic, passphrase = _load_mnemonic(args)
+    print(
+        "BTC: ",
+        BtcAdapter(bip39_passphrase=passphrase).derive_address(
+            mnemonic, BTC_RECEIVE_PATH
+        ),
+    )
+    print("ETH: ", EthAdapter(bip39_passphrase=passphrase).derive_address(mnemonic))
+    print("TRON:", TronAdapter(bip39_passphrase=passphrase).derive_address(mnemonic))
     return 0
 
 
@@ -221,12 +242,12 @@ def cmd_balance(args: argparse.Namespace) -> int:
         file=sys.stderr,
         flush=True,
     )
-    mnemonic = _load_mnemonic(args)
+    mnemonic, passphrase = _load_mnemonic(args)
     from cryptoswap_wallet.backends import default_backends
 
     backends = default_backends()
     try:
-        for adapter in _wallet_adapters(args):
+        for adapter in _wallet_adapters(args, passphrase):
             with adapter:
                 try:
                     report = adapter.wallet_balance(mnemonic)
@@ -313,7 +334,9 @@ def _derivable_chain(to_: str) -> str:
     return ASSET[to_].split(".", 1)[0]
 
 
-def _resolve_destination(args: argparse.Namespace, mnemonic: str | None) -> str | None:
+def _resolve_destination(
+    args: argparse.Namespace, mnemonic: str | None, passphrase: str = ""
+) -> str | None:
     if args.dest:
         problem = validate_destination_address(_derivable_chain(args.to_), args.dest)
         if problem:
@@ -323,20 +346,23 @@ def _resolve_destination(args: argparse.Namespace, mnemonic: str | None) -> str 
         return None
     # The destination address depends on the target *chain*, so a token like
     # TRON.USDT lands at the same Tron address as native TRX, ETH.USDT at the
-    # ETH address, etc.
+    # ETH address, etc. The BIP-39 passphrase must be applied here too, or an
+    # auto-derived --dest would pay an address the user cannot spend.
     chain = _derivable_chain(args.to_)
     if chain == "ETH":
         from cryptoswap_wallet.chains.eth import EthAdapter
 
-        return EthAdapter().derive_address(mnemonic)
+        return EthAdapter(bip39_passphrase=passphrase).derive_address(mnemonic)
     if chain == "BTC":
         from cryptoswap_wallet.chains.btc import BtcAdapter
 
-        return BtcAdapter().derive_address(mnemonic, BTC_RECEIVE_PATH)
+        return BtcAdapter(bip39_passphrase=passphrase).derive_address(
+            mnemonic, BTC_RECEIVE_PATH
+        )
     if chain == "TRON":
         from cryptoswap_wallet.chains.tron import TronAdapter
 
-        return TronAdapter().derive_address(mnemonic)
+        return TronAdapter(bip39_passphrase=passphrase).derive_address(mnemonic)
     return None  # unknown target chain: caller must pass --dest
 
 
@@ -355,19 +381,34 @@ def _select_backend(  # noqa: ANN202 (Backend, lazy import)
     to_asset: str,
     amount: int,
     destination: str | None,
+    tolerance_bps: int | None = None,
 ):
-    """Pick the backend (lowest price when --backend auto)."""
+    """Pick the backend (lowest price when --backend auto).
+
+    ``tolerance_bps`` is threaded into the selection quotes so a swap the user
+    enables by raising it isn't refused here at the default tolerance. The
+    backends we don't return are closed before returning (the chosen one is
+    closed by the caller's ``with backend.client``); a single explicit backend
+    is returned unquoted and closed by the caller.
+    """
     from cryptoswap_wallet.backends import best_quote, gather_quotes
 
     backends = _backends_for(args)
     if len(backends) == 1:
         return backends[0]
-    results = gather_quotes(backends, from_asset, to_asset, amount, destination)
+    results = gather_quotes(
+        backends, from_asset, to_asset, amount, destination, tolerance_bps=tolerance_bps
+    )
     if not results:
+        for unused in backends:
+            unused.client.close()
         raise SwapAborted("no swap backend can serve this pair/amount")
     backend, _ = best_quote(results)
     if len(results) > 1:
         print(f"routing via {backend.name} (best of {len(results)})", file=sys.stderr)
+    for unused in backends:
+        if unused is not backend:
+            unused.client.close()
     return backend
 
 
@@ -377,27 +418,31 @@ def cmd_quote(args: argparse.Namespace) -> int:
         return 2
     from cryptoswap_wallet.backends import best_quote, gather_quotes
 
-    amount = int(round(args.amount * THORCHAIN_UNIT))
+    amount = _base_units(args.amount)
     # Only decrypt the keystore if we actually need to derive the destination.
-    mnemonic = (
-        _load_mnemonic(args)
-        if args.dest is None and _derivable_chain(args.to_) in ("BTC", "ETH", "TRON")
-        else None
-    )
-    dest = _resolve_destination(args, mnemonic)
-    results = gather_quotes(
-        _backends_for(args), ASSET[args.from_], ASSET[args.to_], amount, dest
-    )
-    if not results:
-        print("no backend can serve this swap", file=sys.stderr)
-        return 1
-    chosen, _ = best_quote(results)
-    print(f"in:     {args.amount} {args.from_}  ->  {args.to_}")
-    for backend, quote in sorted(results, key=lambda p: -p[1].expected_amount_out):
-        out = quote.expected_amount_out / THORCHAIN_UNIT
-        mark = "  <- best" if backend is chosen else ""
-        print(f"  {backend.name:9} {out:.8f}  ({quote.fees.total_bps} bps){mark}")
-    return 0
+    if args.dest is None and _derivable_chain(args.to_) in ("BTC", "ETH", "TRON"):
+        mnemonic, passphrase = _load_mnemonic(args)
+    else:
+        mnemonic, passphrase = None, ""
+    dest = _resolve_destination(args, mnemonic, passphrase)
+    backends = _backends_for(args)
+    try:
+        results = gather_quotes(
+            backends, ASSET[args.from_], ASSET[args.to_], amount, dest
+        )
+        if not results:
+            print("no backend can serve this swap", file=sys.stderr)
+            return 1
+        chosen, _ = best_quote(results)
+        print(f"in:     {args.amount} {args.from_}  ->  {args.to_}")
+        for backend, quote in sorted(results, key=lambda p: -p[1].expected_amount_out):
+            out = quote.expected_amount_out / THORCHAIN_UNIT
+            mark = "  <- best" if backend is chosen else ""
+            print(f"  {backend.name:9} {out:.8f}  ({quote.fees.total_bps} bps){mark}")
+        return 0
+    finally:
+        for backend in backends:
+            backend.client.close()
 
 
 def cmd_swap(args: argparse.Namespace) -> int:
@@ -424,10 +469,10 @@ def _send_btc(args: argparse.Namespace) -> int:
     from cryptoswap_wallet.chains.coins import InsufficientFunds, sweep_amount
     from cryptoswap_wallet.chains.scan import scan_account
 
-    mnemonic = _load_mnemonic(args)
+    mnemonic, passphrase = _load_mnemonic(args)
     recipient = args.address
     sweep = args.amount == "max"
-    with _btc_adapter(args) as adapter:
+    with _btc_adapter(args, passphrase) as adapter:
         records = scan_account(
             derive_address=lambda p: adapter.derive_address(mnemonic, p),
             probe=adapter.address_info,
@@ -450,7 +495,7 @@ def _send_btc(args: argparse.Namespace) -> int:
                 total = sum(u.value for u in utxos)
                 amount, _ = sweep_amount(total, len(utxos), fee_rate, memo_len=0)
             else:
-                amount = int(round(args.amount * THORCHAIN_UNIT))
+                amount = _base_units(args.amount)
             prepared = adapter.build_and_verify_send(
                 recipient=recipient,
                 amount=amount,
@@ -501,16 +546,17 @@ def _confirm_and_execute(prepared, adapter, args: argparse.Namespace) -> int:  #
 
 
 def _swap_from_btc(args: argparse.Namespace) -> int:
+    from cryptoswap_wallet.chains.coins import InsufficientFunds
     from cryptoswap_wallet.chains.scan import scan_account
 
-    mnemonic = _load_mnemonic(args)
-    dest = _resolve_destination(args, mnemonic)
+    mnemonic, passphrase = _load_mnemonic(args)
+    dest = _resolve_destination(args, mnemonic, passphrase)
     if dest is None:
         print("a --dest address is required for this destination", file=sys.stderr)
         return 2
 
     sweep = args.amount == "max"
-    with _btc_adapter(args) as adapter:
+    with _btc_adapter(args, passphrase) as adapter:
         records = scan_account(
             derive_address=lambda p: adapter.derive_address(mnemonic, p),
             probe=adapter.address_info,
@@ -529,7 +575,7 @@ def _swap_from_btc(args: argparse.Namespace) -> int:
         change_address = adapter.derive_address(mnemonic, BTC_CHANGE_PATH)
         fee_rate = adapter.fetch_fee_rate()
         if sweep:
-            from cryptoswap_wallet.chains.coins import InsufficientFunds, sweep_amount
+            from cryptoswap_wallet.chains.coins import sweep_amount
 
             total = sum(u.value for u in utxos)
             try:
@@ -538,7 +584,7 @@ def _swap_from_btc(args: argparse.Namespace) -> int:
                 print(f"ABORTED: {exc}", file=sys.stderr)
                 return 1
         else:
-            amount = int(round(args.amount * THORCHAIN_UNIT))
+            amount = _base_units(args.amount)
 
         request = SwapRequest(
             from_asset="BTC.BTC",
@@ -553,6 +599,7 @@ def _swap_from_btc(args: argparse.Namespace) -> int:
                 to_asset=request.to_asset,
                 amount=amount,
                 destination=dest,
+                tolerance_bps=args.tolerance_bps,
             )
         except SwapAborted as exc:
             print(f"ABORTED: {exc}", file=sys.stderr)
@@ -572,7 +619,10 @@ def _swap_from_btc(args: argparse.Namespace) -> int:
                     max_fee=args.max_fee,
                     sweep=sweep,
                 )
-            except SwapAborted as exc:
+            except (SwapAborted, InsufficientFunds) as exc:
+                # InsufficientFunds escapes select_coins inside build_and_verify
+                # on a non-sweep swap; catch it here (not just in the sweep path)
+                # so the user sees a clean ABORTED, not a traceback.
                 print(f"ABORTED: {exc}", file=sys.stderr)
                 return 1
 
@@ -592,8 +642,8 @@ def _swap_from_eth(args: argparse.Namespace) -> int:
     )
     from cryptoswap_wallet.chains.eth import eth_sweep_amount
 
-    mnemonic = _load_mnemonic(args)
-    dest = _resolve_destination(args, mnemonic)
+    mnemonic, passphrase = _load_mnemonic(args)
+    dest = _resolve_destination(args, mnemonic, passphrase)
     if dest is None:
         print("a --dest address is required for this destination", file=sys.stderr)
         return 2
@@ -607,7 +657,7 @@ def _swap_from_eth(args: argparse.Namespace) -> int:
             "if the deposit fails after the approve, an exact-amount allowance to "
             "the router remains",
         )
-    with _eth_adapter(args) as adapter:
+    with _eth_adapter(args, passphrase) as adapter:
         from_address = adapter.derive_address(mnemonic)
         nonce = adapter.get_nonce(from_address)
         max_fee_per_gas, max_priority_fee_per_gas = adapter.fetch_fees()
@@ -634,7 +684,7 @@ def _swap_from_eth(args: argparse.Namespace) -> int:
                 print(f"ABORTED: {exc}", file=sys.stderr)
                 return 1
         else:
-            amount = int(round(args.amount * THORCHAIN_UNIT))
+            amount = _base_units(args.amount)
         request = SwapRequest(
             from_asset=from_asset,
             to_asset=ASSET[args.to_],
@@ -648,6 +698,7 @@ def _swap_from_eth(args: argparse.Namespace) -> int:
                 to_asset=request.to_asset,
                 amount=amount,
                 destination=dest,
+                tolerance_bps=args.tolerance_bps,
             )
         except SwapAborted as exc:
             print(f"ABORTED: {exc}", file=sys.stderr)
@@ -700,13 +751,13 @@ def _swap_from_tron(args: argparse.Namespace) -> int:
             "and unrefundable if the memo/vault is wrong (the verify gate checks both)",
         )
 
-    mnemonic = _load_mnemonic(args)
-    dest = _resolve_destination(args, mnemonic)
+    mnemonic, passphrase = _load_mnemonic(args)
+    dest = _resolve_destination(args, mnemonic, passphrase)
     if dest is None:
         print("a --dest address is required for this destination", file=sys.stderr)
         return 2
 
-    with _tron_adapter(args) as adapter:
+    with _tron_adapter(args, passphrase) as adapter:
         if sweep:
             # A token sweep sends the whole balance — energy is paid in TRX, not
             # the token, so the amount is exact.
@@ -722,7 +773,7 @@ def _swap_from_tron(args: argparse.Namespace) -> int:
                 print(f"ABORTED: {exc}", file=sys.stderr)
                 return 1
         else:
-            amount = int(round(args.amount * THORCHAIN_UNIT))
+            amount = _base_units(args.amount)
         request = SwapRequest(
             from_asset=ASSET[args.from_],
             to_asset=ASSET[args.to_],
@@ -736,6 +787,7 @@ def _swap_from_tron(args: argparse.Namespace) -> int:
                 to_asset=request.to_asset,
                 amount=amount,
                 destination=dest,
+                tolerance_bps=args.tolerance_bps,
             )
             with backend.client as thor:
                 prepared = prepare_swap(
@@ -769,7 +821,7 @@ def cmd_add_liquidity(args: argparse.Namespace) -> int:
 
     pool = ASSET[args.asset]
     sweep = args.amount == "max"
-    amount = None if sweep else int(round(args.amount * THORCHAIN_UNIT))
+    amount = None if sweep else _base_units(args.amount)
     return _liquidity(args, memo=add_liquidity_memo(pool), amount=amount, sweep=sweep)
 
 
@@ -807,11 +859,12 @@ def _liquidity(
 def _liquidity_btc(
     args: argparse.Namespace, *, memo: str, amount: int | None, sweep: bool = False
 ) -> int:
+    from cryptoswap_wallet.chains.coins import InsufficientFunds
     from cryptoswap_wallet.chains.scan import scan_account
     from cryptoswap_wallet.swap import prepare_liquidity
 
-    mnemonic = _load_mnemonic(args)
-    with _btc_adapter(args) as adapter, _liquidity_client(args) as thor:
+    mnemonic, passphrase = _load_mnemonic(args)
+    with _btc_adapter(args, passphrase) as adapter, _liquidity_client(args) as thor:
         records = scan_account(
             derive_address=lambda p: adapter.derive_address(mnemonic, p),
             probe=adapter.address_info,
@@ -833,7 +886,7 @@ def _liquidity_btc(
         change_address = adapter.derive_address(mnemonic, BTC_CHANGE_PATH)
         fee_rate = adapter.fetch_fee_rate()
         if sweep:
-            from cryptoswap_wallet.chains.coins import InsufficientFunds, sweep_amount
+            from cryptoswap_wallet.chains.coins import sweep_amount
 
             total = sum(u.value for u in utxos)
             try:
@@ -857,7 +910,10 @@ def _liquidity_btc(
                 max_fee=args.max_fee,
                 sweep=sweep,
             )
-        except SwapAborted as exc:
+        except (SwapAborted, InsufficientFunds) as exc:
+            # Non-sweep LP: InsufficientFunds escapes select_coins inside
+            # build_and_verify_deposit; catch it here so the user sees ABORTED,
+            # not a raw traceback.
             print(f"ABORTED: {exc}", file=sys.stderr)
             return 1
         vault = prepared.plan.inbound_address
@@ -874,8 +930,8 @@ def _liquidity_eth(
     from cryptoswap_wallet.chains.eth import eth_sweep_amount
     from cryptoswap_wallet.swap import prepare_liquidity
 
-    mnemonic = _load_mnemonic(args)
-    with _eth_adapter(args) as adapter, _liquidity_client(args) as thor:
+    mnemonic, passphrase = _load_mnemonic(args)
+    with _eth_adapter(args, passphrase) as adapter, _liquidity_client(args) as thor:
         from_address = adapter.derive_address(mnemonic)
         nonce = adapter.get_nonce(from_address)
         max_fee_per_gas, max_priority_fee_per_gas = adapter.fetch_fees()
@@ -921,8 +977,8 @@ def _liquidity_tron(
     if sweep:
         print("--amount max is not supported for TRON liquidity yet", file=sys.stderr)
         return 2
-    mnemonic = _load_mnemonic(args)
-    with _tron_adapter(args) as adapter, _liquidity_client(args) as thor:
+    mnemonic, passphrase = _load_mnemonic(args)
+    with _tron_adapter(args, passphrase) as adapter, _liquidity_client(args) as thor:
         try:
             prepared = prepare_liquidity(
                 thorchain=thor,
@@ -973,20 +1029,44 @@ def cmd_status(args: argparse.Namespace) -> int:
 # --- parser -----------------------------------------------------------------
 
 
-def _amount(value: str) -> float | str:
+def _amount(value: str) -> Decimal | str:
     """Parse a swap amount: a positive number, or the literal 'max' to sweep.
 
-    Rejecting ``<= 0`` (and nan/inf) here means no handler has to re-check, and a
-    typo'd or zero amount fails fast at the CLI rather than building a bad tx.
+    Returns a :class:`~decimal.Decimal` (never a binary ``float``) so the amount
+    can be scaled to base units exactly — float64 holds only ~15-16 significant
+    decimals, enough to mis-size a large swap by a base unit.
+
+    Rejecting ``<= 0`` / nan / inf — and amounts smaller than one base unit
+    (1e-8) — here means no handler has to re-check, a typo'd or zero amount fails
+    fast at the CLI, and a positive amount that would round to **zero** base
+    units can never reach a tx (which would burn a fee on a no-op send).
     """
     if value.lower() == "max":
         return "max"
-    amount = float(value)
-    if not math.isfinite(amount) or amount <= 0:
+    try:
+        amount = Decimal(value)
+    except InvalidOperation:
+        raise argparse.ArgumentTypeError(
+            f"amount must be a positive number or 'max', got {value!r}"
+        ) from None
+    if not amount.is_finite() or amount <= 0:
         raise argparse.ArgumentTypeError(
             f"amount must be a positive number or 'max', got {value!r}"
         )
+    if amount * THORCHAIN_UNIT < 1:
+        raise argparse.ArgumentTypeError(
+            f"amount {value!r} is below one base unit (1e-8); too small to send"
+        )
     return amount
+
+
+def _base_units(amount: Decimal) -> int:
+    """Scale a human ``--amount`` (whole --from units) to THORChain 1e8 base units.
+
+    Decimal end-to-end: a large amount like ``93393106.59778857`` must not pick
+    up a float rounding error and be signed/broadcast one base unit off.
+    """
+    return int((amount * THORCHAIN_UNIT).to_integral_value(rounding=ROUND_HALF_EVEN))
 
 
 def _add_swap_args(sub: argparse.ArgumentParser) -> None:

@@ -38,6 +38,19 @@ def test_op_return_rejects_oversize():
         encode_op_return(b"x" * 81)
 
 
+def test_decode_op_return_rejects_bare_opcode():
+    # A length-1 nulldata script (bare OP_RETURN, no push) must reject cleanly,
+    # not raise IndexError when indexing the (absent) push-length byte.
+    with pytest.raises(ValueError):
+        decode_op_return(b"\x6a")
+
+
+def test_decode_op_return_rejects_truncated_pushdata1():
+    # OP_RETURN OP_PUSHDATA1 with the length byte missing.
+    with pytest.raises(ValueError):
+        decode_op_return(b"\x6a\x4c")
+
+
 def test_decode_rejects_non_op_return():
     with pytest.raises(ValueError):
         decode_op_return(b"\x00\x01\x02")

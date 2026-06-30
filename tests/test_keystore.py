@@ -49,6 +49,29 @@ def test_hd_passphrase_roundtrip(tmp_path):
     assert loaded.entries[0].passphrase.reveal() == "extra-word"
 
 
+def test_v1_keystore_strips_bip39_passphrase(tmp_path):
+    # A v1 keystore stored a BIP-39 passphrase but never applied it to
+    # derivation, so funds are at empty-passphrase addresses. On load the
+    # passphrase must be dropped, so v2 derivation keeps deriving those same
+    # addresses (nothing in view shifts when the bug is fixed).
+    path = tmp_path / "ks.json"
+    ks = Keystore()
+    ks.add_hd("withpw", MNEMONIC, passphrase="extra-word")
+    ks.save(path, PW, n=LOW_N)
+    env = json.loads(path.read_text())
+    env["version"] = 1  # simulate a legacy (pre-fix) keystore
+    path.write_text(json.dumps(env))
+
+    loaded = Keystore.load(path, PW)
+    assert loaded.entries[0].passphrase is None
+
+
+def test_save_writes_version_2(tmp_path):
+    path = tmp_path / "ks.json"
+    make().save(path, PW, n=LOW_N)
+    assert json.loads(path.read_text())["version"] == 2
+
+
 def test_wrong_passphrase_raises(tmp_path):
     path = tmp_path / "ks.json"
     make().save(path, PW, n=LOW_N)

@@ -294,3 +294,11 @@ def test_btc_build_and_verify_flags_wrong_destination():
         max_fee=100000,
     )
     assert not prepared.safe
+
+
+def test_btc_derivation_honors_bip39_passphrase():
+    base = BtcAdapter().derive_address(MNEMONIC)
+    withpw = BtcAdapter(bip39_passphrase="extra-word").derive_address(MNEMONIC)
+    assert withpw != base
+    # Empty passphrase == no passphrase: a v1 wallet keeps its addresses.
+    assert BtcAdapter(bip39_passphrase="").derive_address(MNEMONIC) == base

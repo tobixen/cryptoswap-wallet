@@ -23,7 +23,7 @@ from eth_account.signers.local import LocalAccount
 from cryptoswap_wallet.chains.base import BalanceReport
 from cryptoswap_wallet.chains.coins import InsufficientFunds
 from cryptoswap_wallet.net import HttpClient
-from cryptoswap_wallet.swap import Prepared, SwapRequest
+from cryptoswap_wallet.swap import BroadcastError, Prepared, SwapRequest
 from cryptoswap_wallet.thorchain import Quote
 from cryptoswap_wallet.verify import (
     WEI_PER_THORCHAIN_UNIT,
@@ -227,12 +227,20 @@ class EthAdapter(HttpClient):
     chain = "ETH"
     asset = "ETH.ETH"
 
-    def __init__(self, rpc_url: str = DEFAULT_RPC, timeout: float = 20.0) -> None:
+    def __init__(
+        self,
+        rpc_url: str = DEFAULT_RPC,
+        timeout: float = 20.0,
+        bip39_passphrase: str = "",
+    ) -> None:
         super().__init__(timeout)
         self.rpc_url = rpc_url
+        self.bip39_passphrase = bip39_passphrase
 
     def _key(self, mnemonic: str, path: str) -> LocalAccount:
-        return Account.from_mnemonic(mnemonic, account_path=path)
+        return Account.from_mnemonic(
+            mnemonic, passphrase=self.bip39_passphrase, account_path=path
+        )
 
     def derive_address(self, mnemonic: str, path: str = DEFAULT_ETH_DERIVATION) -> str:
         return self._key(mnemonic, path).address
@@ -248,6 +256,10 @@ class EthAdapter(HttpClient):
         payload = resp.json()
         if payload.get("error"):
             raise RuntimeError(f"RPC {method}: {payload['error']}")
+        if "result" not in payload:
+            raise RuntimeError(
+                f"RPC {method}: malformed response (no result): {payload!r}"
+            )
         return payload["result"]
 
     def get_nonce(self, address: str) -> int:
@@ -311,7 +323,15 @@ class EthAdapter(HttpClient):
     def broadcast(self, raws: list[str]) -> str:
         txid = ""
         for raw in raws:
-            txid = self._rpc("eth_sendRawTransaction", [raw])
+            # A JSON-RPC rejection (nonce too low, intrinsic gas, …) comes back
+            # HTTP 200 with an `error` body, which _rpc raises as a bare
+            # RuntimeError. Wrap it as BroadcastError so the CLI reports it
+            # cleanly instead of crashing — especially important for a token
+            # swap, where the approve tx may already be on-chain.
+            try:
+                txid = self._rpc("eth_sendRawTransaction", [raw])
+            except RuntimeError as exc:
+                raise BroadcastError(str(exc)) from exc
         return str(txid)
 
     def build_unsigned_swap(

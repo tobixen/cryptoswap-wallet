@@ -14,9 +14,14 @@ from __future__ import annotations
 import dataclasses
 from typing import Protocol
 
-from cryptoswap_wallet.thorchain import ChainStatus, Quote, ThorchainError
-
-DEFAULT_TOLERANCE_BPS = 300
+# DEFAULT_TOLERANCE_BPS lives in thorchain (re-exported here for callers like
+# cli) so the client default and this protocol default can't drift apart.
+from cryptoswap_wallet.thorchain import (
+    DEFAULT_TOLERANCE_BPS,
+    ChainStatus,
+    Quote,
+    ThorchainError,
+)
 
 
 class SwapAborted(RuntimeError):

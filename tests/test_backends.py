@@ -53,3 +53,22 @@ def test_gather_skips_errors_below_min_and_no_memo():
     ]
     results = gather_quotes(backends, "BTC.BTC", "ETH.ETH", 178100, "0xdest")
     assert [b.name for b, _ in results] == ["ok"]
+
+
+def test_gather_quotes_threads_tolerance_bps():
+    captured = {}
+
+    class CapturingClient:
+        def quote_swap(self, *args, **kwargs):
+            captured.update(kwargs)
+            return make_quote(100)
+
+    gather_quotes(
+        [Backend("x", CapturingClient())],
+        "BTC.BTC",
+        "ETH.ETH",
+        178100,
+        "0xdest",
+        tolerance_bps=1500,
+    )
+    assert captured.get("tolerance_bps") == 1500

@@ -278,3 +278,57 @@ def test_eth_token_balance_live():
     assert [r.symbol for r in reports] == ["USDT-ETH"]
     assert reports[0].decimals == 6
     assert reports[0].confirmed >= 0
+
+
+# --- JSON-RPC error handling (broadcast + malformed responses) ---
+
+
+class _FakeResp:
+    def __init__(self, payload):
+        self._payload = payload
+
+    def raise_for_status(self):
+        return None
+
+    def json(self):
+        return self._payload
+
+
+def test_eth_broadcast_wraps_rpc_error(monkeypatch):
+    # A JSON-RPC rejection comes back HTTP 200 with an `error` body, which _rpc
+    # raises as a bare RuntimeError. broadcast() must wrap it in BroadcastError
+    # so the CLI's _confirm_and_execute handler catches it (no raw traceback).
+    from cryptoswap_wallet.swap import BroadcastError
+
+    adapter = EthAdapter()
+
+    def boom(method, params):
+        raise RuntimeError("RPC eth_sendRawTransaction: nonce too low")
+
+    monkeypatch.setattr(adapter, "_rpc", boom)
+    with pytest.raises(BroadcastError):
+        adapter.broadcast(["0xdeadbeef"])
+
+
+def test_eth_rpc_missing_result_is_clean_error(monkeypatch):
+    # A non-conformant node may answer with neither `result` nor `error`. _rpc
+    # must raise a descriptive RuntimeError, not a bare KeyError on payload["result"].
+    adapter = EthAdapter()
+    monkeypatch.setattr(
+        adapter, "_post", lambda *a, **k: _FakeResp({"jsonrpc": "2.0", "id": 1})
+    )
+    with pytest.raises(RuntimeError) as excinfo:
+        adapter._rpc("eth_getBalance", ["0x0", "latest"])
+    assert "result" in str(excinfo.value).lower()
+
+
+# --- BIP-39 passphrase derivation (finding #1) ---
+
+
+def test_eth_derivation_honors_bip39_passphrase():
+    base = EthAdapter().derive_address(MNEMONIC)
+    withpw = EthAdapter(bip39_passphrase="extra-word").derive_address(MNEMONIC)
+    assert withpw != base  # a passphrase derives a different wallet
+    # An empty passphrase MUST equal the no-passphrase derivation, so a v1
+    # wallet (passphrase stripped to "") keeps deriving its existing addresses.
+    assert EthAdapter(bip39_passphrase="").derive_address(MNEMONIC) == base

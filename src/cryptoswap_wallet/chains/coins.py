@@ -57,7 +57,11 @@ def decode_op_return(script: bytes) -> bytes:
     """Inverse of :func:`encode_op_return`; raises on a non-OP_RETURN script."""
     if not script or script[0] != OP_RETURN_OPCODE:
         raise ValueError("not an OP_RETURN script")
+    if len(script) < 2:
+        raise ValueError("OP_RETURN script carries no data push")
     if script[1] == OP_PUSHDATA1:
+        if len(script) < 3:
+            raise ValueError("truncated OP_PUSHDATA1 OP_RETURN script")
         return script[3 : 3 + script[2]]
     return script[2 : 2 + script[1]]
 

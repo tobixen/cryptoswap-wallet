@@ -96,13 +96,17 @@ class BtcAdapter(HttpClient):
     asset = "BTC.BTC"
 
     def __init__(
-        self, esplora_url: str = DEFAULT_ESPLORA, timeout: float = 20.0
+        self,
+        esplora_url: str = DEFAULT_ESPLORA,
+        timeout: float = 20.0,
+        bip39_passphrase: str = "",
     ) -> None:
         super().__init__(timeout)
         self.esplora_url = esplora_url.rstrip("/")
+        self.bip39_passphrase = bip39_passphrase
 
     def _hdkey(self, mnemonic: str, path: str) -> HDKey:
-        seed = Mnemonic().to_seed(mnemonic)
+        seed = Mnemonic().to_seed(mnemonic, self.bip39_passphrase)
         return HDKey.from_seed(seed, network="bitcoin").key_for_path(path)
 
     def derive_address(self, mnemonic: str, path: str = DEFAULT_DERIVATION) -> str:

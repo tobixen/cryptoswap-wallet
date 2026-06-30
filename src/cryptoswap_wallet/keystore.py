@@ -28,7 +28,12 @@ from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.scrypt import Scrypt
 
-ENVELOPE_VERSION = 1
+# v2 honours a per-key BIP-39 passphrase in derivation. v1 stored a passphrase
+# but never applied it (it derived with an empty passphrase), so a v1 wallet's
+# funds sit at empty-passphrase addresses. On load we therefore DROP any stored
+# passphrase from a v1 keystore, so the fixed (v2) derivation keeps deriving the
+# same addresses and nothing in view shifts. Saving always writes v2.
+ENVELOPE_VERSION = 2
 DEFAULT_N = 2**15  # scrypt cost; ~32 MB, sub-100ms to derive
 SCRYPT_R = 8
 SCRYPT_P = 1
@@ -185,7 +190,18 @@ class Keystore:
             raise KeystoreError("wrong passphrase or corrupted keystore") from exc
 
         payload = json.loads(plaintext)
-        return cls(entries=[_entry_from_dict(d) for d in payload["entries"]])
+        entries = [_entry_from_dict(d) for d in payload["entries"]]
+        # A v1 keystore's stored BIP-39 passphrase was never applied to
+        # derivation, so any funds are at empty-passphrase addresses. Drop it so
+        # v2 derivation keeps deriving the same addresses (see ENVELOPE_VERSION).
+        if int(envelope.get("version", 1)) < 2:
+            entries = [
+                dataclasses.replace(e, passphrase=None)
+                if isinstance(e, HdKey) and e.passphrase is not None
+                else e
+                for e in entries
+            ]
+        return cls(entries=entries)
 
 
 def _atomic_write(path: Path, data: bytes) -> None:

@@ -1,5 +1,7 @@
 """Tests for CLI argument parsing (handlers do I/O and are tested manually)."""
 
+from decimal import Decimal
+
 import pytest
 
 from cryptoswap_wallet.cli import ASSET, build_parser
@@ -10,7 +12,9 @@ def test_swap_defaults():
     assert args.command == "swap"
     assert args.from_ == "BTC"
     assert args.to_ == "ETH"
-    assert args.amount == 0.001781
+    # Amounts are parsed as Decimal (never binary float) so they scale to base
+    # units exactly.
+    assert args.amount == Decimal("0.001781")
     assert args.confirm is False
 
 
@@ -41,7 +45,7 @@ def test_add_liquidity_rejects_zero_amount():
 
 def test_swap_amount_numeric_parses():
     args = build_parser().parse_args(["swap", "--amount", "0.001"])
-    assert args.amount == 0.001
+    assert args.amount == Decimal("0.001")
 
 
 def test_swap_yes_flag_parses():
@@ -96,13 +100,15 @@ def test_swap_from_eth_token_sweep_uses_full_token_balance(monkeypatch):
         def token_decimals(self, token):
             return 6
 
-    monkeypatch.setattr(cli, "_load_mnemonic", lambda args: "mnemonic")
-    monkeypatch.setattr(cli, "_resolve_destination", lambda args, m: "bc1qdest")
-    monkeypatch.setattr(cli, "_eth_adapter", lambda args: FakeAdapter())
+    monkeypatch.setattr(cli, "_load_mnemonic", lambda args: ("mnemonic", ""))
+    monkeypatch.setattr(cli, "_resolve_destination", lambda args, m, p="": "bc1qdest")
+    monkeypatch.setattr(cli, "_eth_adapter", lambda args, passphrase="": FakeAdapter())
 
     captured = {}
 
-    def fake_select_backend(args, *, from_asset, to_asset, amount, destination):
+    def fake_select_backend(
+        args, *, from_asset, to_asset, amount, destination, tolerance_bps=None
+    ):
         captured["amount"] = amount
         raise SwapAborted("captured")  # short-circuit before any network/quote
 
@@ -150,13 +156,15 @@ def test_swap_from_tron_token_sweep_uses_full_balance(monkeypatch):
         def fetch_token_balance(self, contract, address):
             return 23_000_000  # 23 USDT (6 decimals)
 
-    monkeypatch.setattr(cli, "_load_mnemonic", lambda args: "mnemonic")
-    monkeypatch.setattr(cli, "_resolve_destination", lambda args, m: "bc1qdest")
-    monkeypatch.setattr(cli, "_tron_adapter", lambda args: FakeAdapter())
+    monkeypatch.setattr(cli, "_load_mnemonic", lambda args: ("mnemonic", ""))
+    monkeypatch.setattr(cli, "_resolve_destination", lambda args, m, p="": "bc1qdest")
+    monkeypatch.setattr(cli, "_tron_adapter", lambda args, passphrase="": FakeAdapter())
 
     captured = {}
 
-    def fake_select_backend(args, *, from_asset, to_asset, amount, destination):
+    def fake_select_backend(
+        args, *, from_asset, to_asset, amount, destination, tolerance_bps=None
+    ):
         captured["amount"] = amount
         raise SwapAborted("captured")  # short-circuit before any network/quote
 
@@ -199,7 +207,7 @@ def test_add_liquidity_parses():
     )
     assert args.command == "add-liquidity"
     assert args.asset == "BTC"
-    assert args.amount == 0.001
+    assert args.amount == Decimal("0.001")
 
 
 def test_add_liquidity_amount_max_parses():
@@ -278,7 +286,7 @@ def test_send_parses_recipient_and_amount():
         ["send", "bc1qrecipient", "--amount", "0.001", "--confirm"]
     )
     assert args.address == "bc1qrecipient"
-    assert args.amount == 0.001
+    assert args.amount == Decimal("0.001")
     assert args.asset == "BTC"
     assert args.confirm is True
     assert args.func is cmd_send
@@ -378,3 +386,154 @@ def test_show_seed_command():
     args = build_parser().parse_args(["show-seed", "--key", "x"])
     assert args.command == "show-seed"
     assert args.key == "x"
+
+
+# --- money: Decimal scaling and sub-base-unit guard (findings #2, #9) ---
+
+MNEMONIC = (
+    "abandon abandon abandon abandon abandon abandon "
+    "abandon abandon abandon abandon abandon about"
+)
+
+
+def test_base_units_scales_without_float_error():
+    # 93393106.59778857 BTC through binary float rounds to ...858 base units;
+    # the Decimal path must yield the exact ...857.
+    from cryptoswap_wallet.cli import _amount, _base_units
+
+    assert _base_units(_amount("93393106.59778857")) == 9339310659778857
+
+
+def test_base_units_round_trip_simple():
+    from cryptoswap_wallet.cli import _amount, _base_units
+
+    assert _base_units(_amount("0.5")) == 50_000_000
+
+
+@pytest.mark.parametrize("cmd", ["swap", "send"])
+def test_amount_rejects_sub_base_unit(cmd):
+    # 1e-9 scales to 0.1 base units -> would round to 0 and burn a fee on a
+    # no-op send; reject at parse time.
+    argv = (
+        ["send", "bc1qx", "--amount", "0.000000001"]
+        if cmd == "send"
+        else ["swap", "--amount", "0.000000001"]
+    )
+    with pytest.raises(SystemExit):
+        build_parser().parse_args(argv)
+
+
+# --- BIP-39 passphrase threaded out of the keystore (finding #1) ---
+
+
+def test_load_mnemonic_returns_bip39_passphrase(tmp_path, monkeypatch):
+    import cryptoswap_wallet.cli as cli
+    from cryptoswap_wallet.keystore import Keystore
+
+    path = tmp_path / "ks.json"
+    ks = Keystore()
+    ks.add_hd("w", MNEMONIC, passphrase="extra-word")
+    ks.save(path, "pw", n=1024)
+    monkeypatch.setenv("CRYPTOSWAP_WALLET_KEYSTORE", str(path))
+    monkeypatch.setenv("CRYPTOSWAP_WALLET_PASSPHRASE", "pw")
+
+    args = build_parser().parse_args(["address"])
+    mnemonic, passphrase = cli._load_mnemonic(args)
+    assert mnemonic == MNEMONIC
+    assert passphrase == "extra-word"
+
+
+# --- uncaught InsufficientFunds on a non-sweep BTC swap (finding #4) ---
+
+
+def test_swap_from_btc_insufficient_funds_aborts_cleanly(monkeypatch):
+    import cryptoswap_wallet.cli as cli
+    from cryptoswap_wallet.chains.coins import InsufficientFunds, Utxo
+
+    class FakeBtc:
+        chain = "BTC"
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def derive_address(self, mnemonic, path=None):
+            return "bc1qchange"
+
+        def address_info(self, address):
+            return None  # unused: scan_account is stubbed
+
+        def fetch_utxos(self, address):
+            return [Utxo(txid="aa" * 32, vout=0, value=100_000, address=address)]
+
+        def fetch_fee_rate(self):
+            return 5.0
+
+    class FakeClient:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    class FakeBackend:
+        name = "thorchain"
+        client = FakeClient()
+
+    def fake_scan(*, derive_address, probe, account):
+        from types import SimpleNamespace
+
+        return [("m/84'/0'/0'/0/0", "bc1qowned", SimpleNamespace(confirmed=100_000))]
+
+    def boom(**kwargs):
+        raise InsufficientFunds("have 100000 sats, need 50000000 + fee for the swap")
+
+    monkeypatch.setattr(cli, "_load_mnemonic", lambda args: ("mnemonic", ""))
+    monkeypatch.setattr(cli, "_resolve_destination", lambda args, m, p="": "bc1qdest")
+    monkeypatch.setattr(cli, "_btc_adapter", lambda args, passphrase="": FakeBtc())
+    monkeypatch.setattr(cli, "_select_backend", lambda *a, **k: FakeBackend())
+    monkeypatch.setattr("cryptoswap_wallet.chains.scan.scan_account", fake_scan)
+    monkeypatch.setattr(cli, "prepare_swap", boom)
+
+    args = build_parser().parse_args(
+        ["swap", "--from", "BTC", "--to", "ETH", "--amount", "0.5"]
+    )
+    assert cli._swap_from_btc(args) == 1  # clean ABORTED, not a traceback
+
+
+# --- backend sessions are closed after selection (finding #12) ---
+
+
+def test_select_backend_closes_unused_clients(monkeypatch):
+    from types import SimpleNamespace
+
+    import cryptoswap_wallet.backends as backends_mod
+    import cryptoswap_wallet.cli as cli
+    from cryptoswap_wallet.backends import Backend
+
+    class RecordingClient:
+        def __init__(self):
+            self.closed = False
+
+        def close(self):
+            self.closed = True
+
+    b1 = Backend("thorchain", RecordingClient())
+    b2 = Backend("maya", RecordingClient())
+    monkeypatch.setattr(cli, "_backends_for", lambda args: [b1, b2])
+    monkeypatch.setattr(backends_mod, "gather_quotes", lambda *a, **k: [(b1, object())])
+    monkeypatch.setattr(backends_mod, "best_quote", lambda results: results[0])
+
+    chosen = cli._select_backend(
+        SimpleNamespace(backend="auto"),
+        from_asset="BTC.BTC",
+        to_asset="ETH.ETH",
+        amount=1,
+        destination="bc1qdest",
+        tolerance_bps=300,
+    )
+    assert chosen is b1
+    assert b2.client.closed is True  # the backend we won't use is closed
+    assert b1.client.closed is False  # the chosen one stays open for the caller

@@ -46,13 +46,23 @@ def gather_quotes(
     to_asset: str,
     amount: int,
     destination: str | None,
+    *,
+    tolerance_bps: int | None = None,
 ) -> list[tuple[Backend, Quote]]:
     """Quote every backend; drop ones that can't serve this swap (no pool, halted,
-    below minimum, no memo, or a network error)."""
+    below minimum, no memo, or a network error).
+
+    ``tolerance_bps`` is threaded into each quote when given, so backend
+    selection happens at the same tolerance the swap will lock in; when omitted,
+    the client's default tolerance applies.
+    """
+    extra = {} if tolerance_bps is None else {"tolerance_bps": tolerance_bps}
     results: list[tuple[Backend, Quote]] = []
     for backend in backends:
         try:
-            quote = backend.client.quote_swap(from_asset, to_asset, amount, destination)
+            quote = backend.client.quote_swap(
+                from_asset, to_asset, amount, destination, **extra
+            )
         except (ThorchainError, *HTTP_ERRORS):
             continue
         if quote.memo and amount >= quote.recommended_min_amount_in:
