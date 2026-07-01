@@ -23,6 +23,8 @@ _RULES: dict[str, re.Pattern[str]] = {
     "LTC": re.compile(rf"^(ltc1{_B32}{{11,71}}|[LM3]{_B58}{{24,34}})$"),
     "DOGE": re.compile(rf"^[DA9]{_B58}{{24,34}}$"),
     "BCH": re.compile(rf"^(bitcoincash:)?([qp]{_B32}{{40,60}}|[13]{_B58}{{24,34}})$"),
+    # Dash: legacy base58 only (no segwit) — P2PKH 'X', P2SH '7'.
+    "DASH": re.compile(rf"^[X7]{_B58}{{24,34}}$"),
     "ETH": re.compile(r"^0x[0-9a-fA-F]{40}$"),
     "TRON": re.compile(rf"^T{_B58}{{33}}$"),
 }

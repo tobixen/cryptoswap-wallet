@@ -54,6 +54,7 @@ ASSET = {
     "LTC": "LTC.LTC",
     "DOGE": "DOGE.DOGE",
     "BCH": "BCH.BCH",
+    "DASH": "DASH.DASH",  # Maya-only pool; see docs/dash.md
 }
 
 

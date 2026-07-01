@@ -16,6 +16,10 @@ VALID = {
         "LdP8Qox1VAhCzLJNqrr74YovaWYyNBUWvL",
     ],
     "DOGE": ["DH5yaieqoZN36fDVciNyRueRGvGLR3mr7L"],
+    "DASH": [
+        "Xwm4fpRLuvyQY4wgcbffLTMkVFAJKrxs8k",  # P2PKH ('X')
+        "7gnwGHt17heGpG9Crfeh4KGpYNFugPhJdh",  # P2SH ('7')
+    ],
     "BCH": [
         "bitcoincash:qpm2qsznhks23z7629mms6s4cwef74vcwvy22gdx6a",
         "qpm2qsznhks23z7629mms6s4cwef74vcwvy22gdx6a",
@@ -42,6 +46,9 @@ def test_wrong_network_rejected():
     assert validate_destination_address("ETH", VALID["BTC"][1]) is not None
     # A DOGE address (starts D) is not LTC (starts L/M/3 or ltc1).
     assert validate_destination_address("LTC", VALID["DOGE"][0]) is not None
+    # A DASH address (starts X) is not BTC, and a DOGE address is not DASH.
+    assert validate_destination_address("BTC", VALID["DASH"][0]) is not None
+    assert validate_destination_address("DASH", VALID["DOGE"][0]) is not None
 
 
 def test_truncated_rejected():

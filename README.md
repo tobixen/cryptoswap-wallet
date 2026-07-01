@@ -80,7 +80,7 @@ capability grid above for the per-feature detail.
 | LTC | Litecoin | UTXO | partial | destination only (via `--dest`) |
 | DOGE | Dogecoin | UTXO | partial | destination only (via `--dest`) |
 | BCH | Bitcoin Cash | UTXO | partial | destination only (via `--dest`) |
-| DASH | Dash | UTXO | none | Maya-only |
+| DASH | Dash | UTXO | partial | **Maya-only**; destination only (via `--dest`, `--backend maya`/`auto`). Wallet side (hold/bal/send/from) is a legacy-UTXO effort — see [docs/dash.md](docs/dash.md) |
 | ZEC | Zcash | UTXO | none | Maya-only |
 | RUNE | THORChain native | THORChain | none | |
 | CACAO | Maya native | Maya | none | Maya-only |
@@ -88,7 +88,7 @@ capability grid above for the per-feature detail.
 | XRP | XRP Ledger | XRP | none | |
 | SOL | Solana | Solana | none | |
 | ADA | Cardano | Cardano | none | Maya-only |
-| XMR | Monero | Monero | none | Coming soon to THORChain pool |
+| XMR | Monero | Monero | none | Coming soon to THORChain pool; doesn't fit the current model — see [docs/monero.md](docs/monero.md) |
 | TCY | THORChain reward token | THORChain token | none | niche; low priority |
 | MAYA | Maya governance token | Maya token | none | Maya-only; niche; low priority |
 
