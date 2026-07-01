@@ -9,10 +9,14 @@ name: Integration (network)
 # transient outage never blocks the unit CI in tests.yml; treat this as a
 # signal, not a hard merge gate.
 #
-# To enable the broadcast loop, set repo secrets (the test skips without them):
-#   CRYPTOSWAP_WALLET_NILE_MNEMONIC   seed of a Nile account holding the token + TRX
-#   CRYPTOSWAP_WALLET_NILE_TOKEN      a TRC-20 contract (base58) the account holds
-#   CRYPTOSWAP_WALLET_NILE_RECIPIENT  optional; defaults to a self-transfer
+# To enable the broadcast loops, set repo secrets (the tests skip without them,
+# and skip gracefully if the funded account runs dry — never a hard failure):
+#   CRYPTOSWAP_WALLET_NILE_MNEMONIC          Nile account holding the TRC-20 + TRX
+#   CRYPTOSWAP_WALLET_NILE_TOKEN             a TRC-20 contract (base58) it holds
+#   CRYPTOSWAP_WALLET_NILE_RECIPIENT         optional; defaults to a self-transfer
+#   CRYPTOSWAP_WALLET_BTC_TESTNET_MNEMONIC   a funded BTC testnet3 account (send loop)
+#   CRYPTOSWAP_WALLET_ETH_SEPOLIA_MNEMONIC   a funded ETH Sepolia account (send loop)
+# Use throwaway, testnet-only seeds here — never a seed that holds real funds.
 on:
   push:
     branches: [main, master]
@@ -36,3 +40,5 @@ jobs:
           CRYPTOSWAP_WALLET_NILE_MNEMONIC: ${{ secrets.CRYPTOSWAP_WALLET_NILE_MNEMONIC }}
           CRYPTOSWAP_WALLET_NILE_TOKEN: ${{ secrets.CRYPTOSWAP_WALLET_NILE_TOKEN }}
           CRYPTOSWAP_WALLET_NILE_RECIPIENT: ${{ secrets.CRYPTOSWAP_WALLET_NILE_RECIPIENT }}
+          CRYPTOSWAP_WALLET_BTC_TESTNET_MNEMONIC: ${{ secrets.CRYPTOSWAP_WALLET_BTC_TESTNET_MNEMONIC }}
+          CRYPTOSWAP_WALLET_ETH_SEPOLIA_MNEMONIC: ${{ secrets.CRYPTOSWAP_WALLET_ETH_SEPOLIA_MNEMONIC }}

@@ -27,6 +27,17 @@ import time
 
 import pytest
 
+# Import bitcoinlib (a hard dependency) at collection time, not inside a test:
+# its first import has noisy side effects (a leaked file handle + a SQLAlchemy
+# deprecation warning) that `filterwarnings = ["error"]` would otherwise turn
+# into a spurious in-test failure. Mirrors the other bitcoinlib-backed tests.
+pytest.importorskip("bitcoinlib")
+
+from cryptoswap_wallet.chains.btc import ACCOUNT, BtcAdapter  # noqa: E402
+from cryptoswap_wallet.chains.coins import sweep_amount  # noqa: E402
+from cryptoswap_wallet.chains.eth import EthAdapter  # noqa: E402
+from cryptoswap_wallet.chains.scan import scan_account  # noqa: E402
+
 pytestmark = pytest.mark.network
 
 BTC_TESTNET_MNEMONIC = os.environ.get("CRYPTOSWAP_WALLET_BTC_TESTNET_MNEMONIC")
@@ -51,10 +62,6 @@ SEPOLIA_CHAIN_ID = 11155111
 def test_btc_testnet_send_broadcast():
     """Sweep the wallet's testnet UTXOs to itself: build -> verify -> sign ->
     broadcast, then confirm the network accepted the tx (Esplora sees it)."""
-    from cryptoswap_wallet.chains.btc import ACCOUNT, BtcAdapter
-    from cryptoswap_wallet.chains.coins import sweep_amount
-    from cryptoswap_wallet.chains.scan import scan_account
-
     receive_path = "m/84'/0'/0'/0/0"
     change_path = "m/84'/0'/0'/1/0"
     with BtcAdapter(esplora_url=BTC_TESTNET_ESPLORA, network="testnet") as adapter:
@@ -72,9 +79,14 @@ def test_btc_testnet_send_broadcast():
             if info.confirmed > 0
             for u in adapter.fetch_utxos(address)
         ]
-        assert utxos, "no confirmed testnet UTXOs — fund " + adapter.derive_address(
-            BTC_TESTNET_MNEMONIC, receive_path
-        )
+        if not utxos:
+            # Skip (not fail): an unfunded / still-confirming account is an
+            # environmental condition, not a code regression — so a dry faucet or
+            # testnet3's irregular blocks never turn CI red.
+            pytest.skip(
+                "no confirmed testnet UTXOs — fund "
+                + adapter.derive_address(BTC_TESTNET_MNEMONIC, receive_path)
+            )
 
         fee_rate = adapter.fetch_fee_rate()
         total = sum(u.value for u in utxos)
@@ -112,10 +124,12 @@ def test_btc_testnet_send_broadcast():
 def test_eth_sepolia_send_broadcast_and_confirm():
     """Self-send a tiny amount of Sepolia ETH: build -> verify -> sign ->
     broadcast -> confirm the receipt shows success on chain id 11155111."""
-    from cryptoswap_wallet.chains.eth import EthAdapter
-
     with EthAdapter(rpc_url=ETH_SEPOLIA_RPC, chain_id=SEPOLIA_CHAIN_ID) as adapter:
         sender = adapter.derive_address(ETH_SEPOLIA_MNEMONIC)
+        # Skip (not fail) when unfunded: keeps CI green if the faucet drips dry.
+        # 0.001 ETH is sent + gas; require a little headroom.
+        if adapter.fetch_balance(sender) < 2 * 10**15:
+            pytest.skip(f"Sepolia account unfunded — fund {sender}")
         recipient = os.environ.get("CRYPTOSWAP_WALLET_ETH_SEPOLIA_RECIPIENT") or sender
         nonce = adapter.get_nonce(sender)
         max_fee_per_gas, max_priority_fee_per_gas = adapter.fetch_fees()
