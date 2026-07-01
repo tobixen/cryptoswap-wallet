@@ -6,16 +6,24 @@ non-owned address, an expired quote, or an absurd fee.
 """
 
 from cryptoswap_wallet.verify import (
+    EthSendPlan,
     EthSwapPlan,
+    EthTokenSendPlan,
     SendPlan,
     SwapPlan,
+    TronSendPlan,
     TronSwapPlan,
+    TronTokenSendPlan,
     TronTokenSwapPlan,
     TxOutput,
     verify_btc_send,
     verify_btc_swap,
+    verify_eth_send,
     verify_eth_swap,
+    verify_eth_token_send,
+    verify_tron_send,
     verify_tron_swap,
+    verify_tron_token_send,
     verify_tron_token_swap,
 )
 
@@ -471,3 +479,172 @@ def test_tron_token_rejects_memo_not_paying_destination():
         destination="0x2222222222222222222222222222222222222222",
     )
     assert any("destination" in p.lower() for p in tron_token_verify(plan=plan))
+
+
+# --- send gates (plain external transfer: no swap, no memo, no router) --------
+
+ETH_RECIPIENT = "0x1111111111111111111111111111111111111111"
+ETH_SEND_PLAN = EthSendPlan(recipient=ETH_RECIPIENT, amount_wei=10**16, chain_id=1)
+
+
+def eth_send_verify(**over):
+    kw = dict(
+        to=ETH_RECIPIENT,
+        value=10**16,
+        data="0x",
+        chain_id=1,
+        gas=21000,
+        max_fee_per_gas=20_000_000_000,
+        plan=ETH_SEND_PLAN,
+        max_fee_wei=10**16,
+    )
+    kw.update(over)
+    return verify_eth_send(**kw)
+
+
+def test_eth_send_clean():
+    assert eth_send_verify() == []
+
+
+def test_eth_send_wrong_recipient():
+    assert any("recipient" in p for p in eth_send_verify(to="0x" + "2" * 40))
+
+
+def test_eth_send_wrong_amount():
+    assert any("value" in p for p in eth_send_verify(value=10**15))
+
+
+def test_eth_send_rejects_calldata():
+    # A plain send must carry no calldata — a memo/extra data signals a misbuild.
+    assert any("calldata" in p for p in eth_send_verify(data="0x" + "de" * 8))
+
+
+def test_eth_send_wrong_chain_id():
+    assert any("chainId" in p for p in eth_send_verify(chain_id=56))
+
+
+def test_eth_send_fee_ceiling():
+    assert any("fee" in p for p in eth_send_verify(max_fee_wei=1))
+
+
+ETH_TOKEN = "0xdAC17F958D2ee523a2206206994597C13D831ec7"
+ETH_TOKEN_SEND_PLAN = EthTokenSendPlan(
+    token=ETH_TOKEN, recipient=ETH_RECIPIENT, amount=2_500_000, chain_id=1
+)
+
+
+def eth_token_send_verify(**over):
+    kw = dict(
+        to=ETH_TOKEN,
+        value=0,
+        chain_id=1,
+        recipient=ETH_RECIPIENT,
+        transfer_amount=2_500_000,
+        gas=65000,
+        max_fee_per_gas=20_000_000_000,
+        plan=ETH_TOKEN_SEND_PLAN,
+        max_fee_wei=10**16,
+    )
+    kw.update(over)
+    return verify_eth_token_send(**kw)
+
+
+def test_eth_token_send_clean():
+    assert eth_token_send_verify() == []
+
+
+def test_eth_token_send_wrong_token_target():
+    assert any("token" in p for p in eth_token_send_verify(to="0x" + "3" * 40))
+
+
+def test_eth_token_send_rejects_eth_value():
+    assert any("value" in p for p in eth_token_send_verify(value=1))
+
+
+def test_eth_token_send_wrong_recipient():
+    assert any(
+        "recipient" in p for p in eth_token_send_verify(recipient="0x" + "2" * 40)
+    )
+
+
+def test_eth_token_send_wrong_amount():
+    assert any("amount" in p for p in eth_token_send_verify(transfer_amount=1))
+
+
+TRON_RECIPIENT = "TUEZSdKsoDHQMeZwihtdoBiN46zxhGWYdH"
+TRON_SEND_PLAN = TronSendPlan(recipient=TRON_RECIPIENT, amount_sun=1_000_000)
+
+
+def tron_send_verify(**over):
+    kw = dict(
+        contract_type="TransferContract",
+        to_address=TRON_RECIPIENT,
+        amount_sun=1_000_000,
+        memo="",
+        plan=TRON_SEND_PLAN,
+    )
+    kw.update(over)
+    return verify_tron_send(**kw)
+
+
+def test_tron_send_clean():
+    assert tron_send_verify() == []
+
+
+def test_tron_send_wrong_recipient():
+    assert any("recipient" in p for p in tron_send_verify(to_address="Twrong"))
+
+
+def test_tron_send_wrong_amount():
+    assert any("amount" in p for p in tron_send_verify(amount_sun=2_000_000))
+
+
+def test_tron_send_rejects_memo():
+    assert any("memo" in p for p in tron_send_verify(memo="=:hi"))
+
+
+def test_tron_send_wrong_contract_type():
+    assert any(
+        "contract type" in p
+        for p in tron_send_verify(contract_type="TriggerSmartContract")
+    )
+
+
+TRON_SEND_TOKEN = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t"
+TRON_TOKEN_SEND_PLAN = TronTokenSendPlan(
+    token=TRON_SEND_TOKEN, recipient=TRON_RECIPIENT, amount=3_000_000
+)
+
+
+def tron_token_send_verify(**over):
+    kw = dict(
+        contract_type="TriggerSmartContract",
+        trigger_to=TRON_SEND_TOKEN,
+        recipient=TRON_RECIPIENT,
+        transfer_amount=3_000_000,
+        trx_value=0,
+        memo="",
+        plan=TRON_TOKEN_SEND_PLAN,
+    )
+    kw.update(over)
+    return verify_tron_token_send(**kw)
+
+
+def test_tron_token_send_clean():
+    assert tron_token_send_verify() == []
+
+
+def test_tron_token_send_wrong_token():
+    assert any("token" in p for p in tron_token_send_verify(trigger_to="Tother"))
+
+
+def test_tron_token_send_wrong_recipient():
+    assert any("recipient" in p for p in tron_token_send_verify(recipient="Tnope"))
+
+
+def test_tron_token_send_rejects_trx_value():
+    assert any("TRX value" in p for p in tron_token_send_verify(trx_value=1))
+
+
+def test_tron_token_send_rejects_memo():
+    assert any("memo" in p for p in tron_token_send_verify(memo="=:hi"))

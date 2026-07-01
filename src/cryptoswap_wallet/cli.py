@@ -481,8 +481,105 @@ def cmd_send(args: argparse.Namespace) -> int:
     chain = ASSET[args.asset].split(".", 1)[0]
     if chain == "BTC":
         return _send_btc(args)
-    print(f"send for {args.asset} is not implemented yet (BTC only)", file=sys.stderr)
+    if chain == "ETH":  # native ETH and ERC-20 tokens (USDT-ETH / USDC-ETH)
+        return _send_eth(args)
+    if chain == "TRON":  # native TRX and TRC-20 tokens (USDT-TRON)
+        return _send_tron(args)
+    print(f"send for {args.asset} is not implemented yet", file=sys.stderr)
     return 2
+
+
+def _send_eth(args: argparse.Namespace) -> int:
+    from cryptoswap_wallet.chains.coins import InsufficientFunds, token_sweep_amount
+    from cryptoswap_wallet.chains.eth import NATIVE_SEND_GAS, eth_sweep_amount
+
+    asset = ASSET[args.asset]
+    recipient = args.address
+    problem = validate_destination_address("ETH", recipient)
+    if problem:
+        print(f"recipient: {problem}", file=sys.stderr)
+        return 2
+    is_token = "-" in asset
+    sweep = args.amount == "max"
+    mnemonic, passphrase = _load_mnemonic(args)
+    with _eth_adapter(args, passphrase) as adapter:
+        from_address = adapter.derive_address(mnemonic)
+        nonce = adapter.get_nonce(from_address)
+        max_fee_per_gas, max_priority_fee_per_gas = adapter.fetch_fees()
+        try:
+            if sweep and is_token:
+                token = asset.split("-", 1)[1]
+                amount = token_sweep_amount(
+                    adapter.fetch_token_balance(token, from_address),
+                    adapter.token_decimals(token),
+                )
+            elif sweep:
+                amount = eth_sweep_amount(
+                    adapter.fetch_balance(from_address),
+                    gas=NATIVE_SEND_GAS,
+                    max_fee_per_gas=max_fee_per_gas,
+                )
+            else:
+                amount = _base_units(args.amount)
+        except InsufficientFunds as exc:
+            print(f"ABORTED: {exc}", file=sys.stderr)
+            return 1
+        prepared = adapter.build_and_verify_send(
+            recipient=recipient,
+            amount=amount,
+            asset=asset,
+            mnemonic=mnemonic,
+            nonce=nonce,
+            max_fee_per_gas=max_fee_per_gas,
+            max_priority_fee_per_gas=max_priority_fee_per_gas,
+            max_fee_wei=ETH_MAX_FEE_WEI,
+        )
+        print(f"send:    {amount / THORCHAIN_UNIT:.8f} {args.asset} to {recipient}")
+        print(f"max fee: {prepared.built.fee / 10**18:.6f} ETH")
+        return _confirm_and_execute(prepared, adapter, args)
+
+
+def _send_tron(args: argparse.Namespace) -> int:
+    from cryptoswap_wallet.chains.coins import InsufficientFunds, token_sweep_amount
+
+    asset = ASSET[args.asset]
+    recipient = args.address
+    problem = validate_destination_address("TRON", recipient)
+    if problem:
+        print(f"recipient: {problem}", file=sys.stderr)
+        return 2
+    is_token = "-" in asset
+    sweep = args.amount == "max"
+    if sweep and not is_token:
+        # A native TRX sweep can't be exact — bandwidth/energy is charged
+        # separately, not deducted from the sent amount (same as the TRX source).
+        print("--amount max is not supported for native TRX send", file=sys.stderr)
+        return 2
+    mnemonic, passphrase = _load_mnemonic(args)
+    with _tron_adapter(args, passphrase) as adapter:
+        if sweep:
+            contract, decimals = adapter.token_contract_and_decimals(asset)
+            from_address = adapter.derive_address(mnemonic)
+            try:
+                amount = token_sweep_amount(
+                    adapter.fetch_token_balance(contract, from_address), decimals
+                )
+            except InsufficientFunds as exc:
+                print(f"ABORTED: {exc}", file=sys.stderr)
+                return 1
+        else:
+            amount = _base_units(args.amount)
+        if is_token:
+            _warn(
+                "TRC-20 send — the transfer burns TRX for energy (~15 TRX cap), "
+                "separate from the tokens sent:",
+                "keep spare TRX in the account",
+            )
+        prepared = adapter.build_and_verify_send(
+            recipient=recipient, amount=amount, asset=asset, mnemonic=mnemonic
+        )
+        print(f"send:    {amount / THORCHAIN_UNIT:.8f} {args.asset} to {recipient}")
+        return _confirm_and_execute(prepared, adapter, args)
 
 
 def _send_btc(args: argparse.Namespace) -> int:
@@ -1237,7 +1334,7 @@ def build_parser() -> argparse.ArgumentParser:
     s.set_defaults(func=cmd_withdraw_liquidity)
 
     s = sub.add_parser(
-        "send", help="send to an external address (no swap); BTC only for now"
+        "send", help="send to an external address (no swap); BTC/ETH/TRON"
     )
     s.add_argument("address", help="recipient address")
     s.add_argument(
@@ -1258,6 +1355,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--yes", action="store_true", help="skip the interactive confirm (automation)"
     )
     s.add_argument("--max-fee", type=int, default=50_000, help="max BTC fee in sats")
+    s.add_argument(
+        "--eth-rpc", help="Ethereum JSON-RPC URL ($CRYPTOSWAP_WALLET_ETH_RPC)"
+    )
+    s.add_argument("--tron-api", help="TRON API base URL ($CRYPTOSWAP_WALLET_TRON_API)")
     s.set_defaults(func=cmd_send)
 
     s = sub.add_parser("status", help="track a swap by inbound txid")

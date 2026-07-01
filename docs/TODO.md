@@ -4,11 +4,15 @@
 
 Owner's requested order; two-sided liquidity comes *after* these.
 
-1. ~~**`send` to an external address — BTC first.**~~ **DONE for BTC.** Plain
-   on-chain transfer (no swap, no memo) via `cryptoswap-wallet send <addr>
-   --amount <btc|max>`, reusing the BTC spending path with a dedicated
-   `verify_btc_send` gate. ETH/TRX sends still to do (need account-model transfer
-   builders; ETH is mostly a value-transfer of the existing signing path).
+1. ~~**`send` to an external address.**~~ **DONE for BTC, ETH, USDT-ETH, TRX,
+   USDT-TRON** (USDC-ETH shares the ERC-20 path). Plain on-chain transfer (no
+   swap, no memo) via `cryptoswap-wallet send <addr> --asset <A> --amount
+   <n|max>`, each with a dedicated memo-less verify gate (`verify_{btc,eth,
+   eth_token,tron,tron_token}_send`) that binds recipient + amount and rejects
+   any memo/router/extra calldata. ERC-20/TRC-20 sends are a routerless,
+   approveless `transfer(recipient, amount)`. `max` is exact for tokens, leaves a
+   gas reserve for ETH, and is refused for native TRX (can't be exact). Broadcast
+   remains unproven on mainnet — see the testnet test work below.
 
 2. ~~**TRX liquidity.**~~ **DONE.** TRON source signing landed (native
    `TransferContract` + memo via tronpy, keyless public node), unblocking both

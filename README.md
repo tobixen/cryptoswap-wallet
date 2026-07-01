@@ -29,11 +29,11 @@ The wallet is still under rapid development as of 2026-06-29.  Missing features 
 | Currency  | Hold | Bal | To  | From | Send | Sweep | Liq |
 |-----------|:----:|:---:|:---:|:----:|:----:|:-----:|:---:|
 | BTC       |  ✅  |  ✅ |  ✅ |  ✅  |  ✅  |  ✅  |  ✅ |
-| ETH       |  ✅  |  ✅ |  ✅ |  ✅  |      |  ◑   |  ✅ |
-| USDT-ETH  |  ✅  |  ✅ |  ✅ |  ✅  |      |  ✅  |     |
-| USDC-ETH  |  ✅  |  ✅ |  ✅ |  ✅  |      |  ✅  |     |
-| TRX       |  ✅  |  ✅ |  ✅ |  ✅  |      |      |  ✅ |
-| USDT-TRON |  ✅  |  ✅ |  ✅ |  ✅  |      |  ✅  |     |
+| ETH       |  ✅  |  ✅ |  ✅ |  ✅  |  ✅  |  ◑   |  ✅ |
+| USDT-ETH  |  ✅  |  ✅ |  ✅ |  ✅  |  ✅  |  ✅  |     |
+| USDC-ETH  |  ✅  |  ✅ |  ✅ |  ✅  |  ◑   |  ✅  |     |
+| TRX       |  ✅  |  ✅ |  ✅ |  ✅  |  ✅  |      |  ✅ |
+| USDT-TRON |  ✅  |  ✅ |  ✅ |  ✅  |  ✅  |  ✅  |     |
 | BNB (BSC) |  ✅  |  ✅ |     |      |      |      |     |
 | LTC       |      |     |  ✅ |      |      |      |     |
 | DOGE      |      |     |  ✅ |      |      |      |     |
@@ -45,7 +45,7 @@ The wallet is still under rapid development as of 2026-06-29.  Missing features 
 * **Bal**  — show the `balance` (native, tracked tokens like USDT, and any THORChain/Maya liquidity positions)
 * **To**   — use as a `swap` *destination* (for a currency whose address the wallet can't derive yet, give an external one via `--dest`)
 * **From** — use as a `swap` *source* (the asset you spend)
-* **Send** — `send` to an external address (a plain transfer, no swap)
+* **Send** — `send` to an external address (a plain transfer, no swap). ✅ = implemented and tested; ◑ = USDC-ETH rides the *same* ERC-20 send path as USDT-ETH (only the contract/decimals differ) but isn't separately covered by a test
 * **Sweep** — `--amount max` sends the maximum amount (✅ = exact, wallet ends at 0 — also the case for tokens, whose gas is paid in the native coin; ◑ = small fee reserve/dust is left behind because the real fee is only known at sending time)
 * **Liq**  — `add-liquidity` and `withdraw-liquidity` can be used to provide/withdraw *single-sided* liquidity (experimental; see below).
 
@@ -71,11 +71,11 @@ capability grid above for the per-feature detail.
 | Currency | What it is | Family | Support | Notes |
 |---|---|---|:--:|---|
 | BTC | Bitcoin | UTXO | full | |
-| ETH | Ethereum | EVM | partial | no `send` yet |
-| TRX | TRON | TRON | partial | no `send` yet |
+| ETH | Ethereum | EVM | partial | `send` done |
+| TRX | TRON | TRON | partial | `send` done |
 | BSC / BNB | BNB Smart Chain | EVM | partial | Hold + balance work (native BNB and BEP-20 USDC/USDT, 18-decimal). Swaps blocked: BSC trading halted on THORChain (`chain_trading_paused`), and Maya has no BSC pools — nothing to swap against until THORChain re-enables it |
-| USDT-ETH | Tether | ERC-20 token | partial | no `send`/liquidity yet |
-| USDT-TRON | Tether | TRC-20 token | partial | no `send` yet |
+| USDT-ETH | Tether | ERC-20 token | partial | `send` done; no liquidity yet |
+| USDT-TRON | Tether | TRC-20 token | partial | `send` done |
 | USDT-BSC | Tether | BEP-20 token | none | Blocked: halted on THORChain, not on Maya (Maya has no BSC pools) |
 | USBT-SOL | Tether | ? | none | Not currently available on THORChain/Maya |
 | AVAX | Avalanche C-Chain | EVM | none | |
@@ -111,6 +111,9 @@ cryptoswap-wallet swap  --from ETH --to BTC --amount max          # DRY RUN (swe
 cryptoswap-wallet swap  --from BTC --to USDT-TRON --amount 0.001 --confirm
 cryptoswap-wallet send  bc1q...recipient --amount 0.001                 # DRY RUN
 cryptoswap-wallet send  bc1q...recipient --amount max --confirm         # sweep + send
+cryptoswap-wallet send  0x...recipient --asset ETH --amount 0.01        # native ETH
+cryptoswap-wallet send  0x...recipient --asset USDT-ETH --amount max    # sweep tokens
+cryptoswap-wallet send  T...recipient --asset USDT-TRON --amount 25     # TRC-20
 ```
 
 Defaults are `--from BTC --to ETH`. `--confirm` prints the freshly-quoted swap

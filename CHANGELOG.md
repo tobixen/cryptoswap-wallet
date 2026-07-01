@@ -42,7 +42,12 @@ automatically from git tags (PEP 440 / SemVer).
 - Experimental `add-liquidity` / `withdraw-liquidity` (BTC, ETH, TRX,
   single-sided), with `--backend {thorchain,maya}` and a pre-flight `PAUSELP`
   check that aborts an add THORChain would only refund.
-- `send` to an external address (BTC; plain transfer, no swap/memo), with
-  `--amount max` to sweep. Guarded by a dedicated verify gate.
+- `send` to an external address (plain transfer, no swap/memo) for **BTC, ETH,
+  USDT-ETH, TRX and USDT-TRON** (USDC-ETH rides the same ERC-20 path), with
+  `--amount max` to sweep (exact for tokens; ETH leaves a gas reserve; native
+  TRX sweep is refused as it can't be exact). Each asset has its own strict
+  verify gate binding recipient + amount and rejecting any memo/router/extra
+  calldata; the recipient is sanity-checked before building. ERC-20/TRC-20 sends
+  are a routerless, approveless `transfer(recipient, amount)`.
 - Packaging: Hatch + hatch-vcs, `make install`, `--version`, CI, and PyPI
   trusted-publishing gated on the live integration tests.

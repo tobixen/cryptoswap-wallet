@@ -27,9 +27,13 @@ from cryptoswap_wallet.net import HttpClient
 from cryptoswap_wallet.swap import BroadcastError, Prepared, SwapRequest
 from cryptoswap_wallet.thorchain import Quote
 from cryptoswap_wallet.verify import (
+    TronSendPlan,
     TronSwapPlan,
+    TronTokenSendPlan,
     TronTokenSwapPlan,
+    verify_tron_send,
     verify_tron_swap,
+    verify_tron_token_send,
     verify_tron_token_swap,
 )
 
@@ -462,6 +466,50 @@ class TronAdapter(HttpClient):
             mnemonic=mnemonic,
             quote=quote,
         )
+
+    def build_and_verify_send(
+        self, *, recipient: str, amount: int, asset: str, mnemonic: str
+    ) -> Prepared:
+        """Build + verify a plain external send (no swap, no memo).
+
+        ``amount`` is in THORChain 1e8 base units. For a TRC-20 (``asset`` like
+        ``TRON.USDT-...``) this is a routerless ``transfer(recipient, amount)``
+        with no memo in the tx data; for native TRX it is a ``TransferContract``.
+        A wrong recipient is irreversible, so recipient/amount are bound by the
+        verify gate before signing.
+        """
+        if "-" in asset:  # TRC-20 token send
+            token, decimals = self.token_contract_and_decimals(asset)
+            native = self.to_token_native(amount, decimals)
+            built = self.build_unsigned_trc20_transfer(
+                mnemonic=mnemonic, token=token, to=recipient, amount=native, memo=""
+            )
+            d_recipient, transfer_amount = decode_trc20_transfer(built.call_data)
+            plan = TronTokenSendPlan(token=token, recipient=recipient, amount=native)
+            problems = verify_tron_token_send(
+                contract_type=built.contract_type,
+                trigger_to=built.to_address,
+                recipient=d_recipient,
+                transfer_amount=transfer_amount,
+                trx_value=built.amount_sun,
+                memo=built.memo,
+                plan=plan,
+            )
+            return Prepared(quote=None, built=built, plan=plan, problems=problems)
+
+        amount_sun = self.to_sun(amount)
+        built = self.build_unsigned_transfer(
+            mnemonic=mnemonic, to=recipient, amount_sun=amount_sun, memo=""
+        )
+        plan = TronSendPlan(recipient=recipient, amount_sun=amount_sun)
+        problems = verify_tron_send(
+            contract_type=built.contract_type,
+            to_address=built.to_address,
+            amount_sun=built.amount_sun,
+            memo=built.memo,
+            plan=plan,
+        )
+        return Prepared(quote=None, built=built, plan=plan, problems=problems)
 
     def build_and_verify_deposit(
         self, *, vault: str, memo: str, amount: int, now: int, mnemonic: str

@@ -360,3 +360,165 @@ def verify_eth_swap(
         problems.append(f"max fee {total_fee} wei exceeds limit {max_fee_wei}")
 
     return problems
+
+
+# --- plain external sends (no swap: no vault, no memo, no router) -------------
+#
+# A send pays an arbitrary recipient the exact amount and carries NO memo/router/
+# extra calldata. An unexpected memo or data field signals a misconstructed tx
+# (e.g. a swap builder used by mistake) and MUST block — hence these gates assert
+# emptiness as strictly as the swap gates assert the memo.
+
+
+@dataclasses.dataclass(frozen=True)
+class EthSendPlan:
+    """What we intend a plain native-ETH send to do."""
+
+    recipient: str
+    amount_wei: int
+    chain_id: int = 1
+
+
+def verify_eth_send(
+    *,
+    to: str,
+    value: int,
+    data: str,
+    chain_id: int,
+    gas: int,
+    max_fee_per_gas: int,
+    plan: EthSendPlan,
+    max_fee_wei: int,
+) -> list[str]:
+    """Return reasons a native-ETH send does not match ``plan``; empty means safe."""
+    problems: list[str] = []
+
+    if (to or "").lower() != plan.recipient.lower():
+        problems.append(f"tx 'to' {to} != recipient {plan.recipient}")
+    if value != plan.amount_wei:
+        problems.append(f"tx value {value} wei != intended {plan.amount_wei}")
+    if (data or "0x") not in ("0x", ""):
+        problems.append(f"plain ETH send must carry no calldata, got {data!r}")
+    if chain_id != plan.chain_id:
+        problems.append(f"chainId {chain_id} != {plan.chain_id}")
+    total_fee = gas * max_fee_per_gas
+    if total_fee > max_fee_wei:
+        problems.append(f"max fee {total_fee} wei exceeds limit {max_fee_wei}")
+
+    return problems
+
+
+@dataclasses.dataclass(frozen=True)
+class EthTokenSendPlan:
+    """What we intend a plain ERC-20 send to do: transfer(recipient, amount)."""
+
+    token: str  # the ERC-20 contract the tx must target
+    recipient: str  # the decoded transfer recipient
+    amount: int  # token native units
+    chain_id: int = 1
+
+
+def verify_eth_token_send(
+    *,
+    to: str,
+    value: int,
+    chain_id: int,
+    recipient: str,
+    transfer_amount: int,
+    gas: int,
+    max_fee_per_gas: int,
+    plan: EthTokenSendPlan,
+    max_fee_wei: int,
+) -> list[str]:
+    """Return reasons an ERC-20 send does not match ``plan``; empty means safe.
+
+    ``recipient``/``transfer_amount`` are the already-decoded ``transfer`` args
+    (a routerless, approveless plain token transfer). A wrong token target,
+    recipient or amount means irreversible loss.
+    """
+    problems: list[str] = []
+
+    if (to or "").lower() != plan.token.lower():
+        problems.append(f"tx 'to' {to} != token contract {plan.token}")
+    if value != 0:
+        problems.append(f"token send must not send ETH value (got {value})")
+    if (recipient or "").lower() != plan.recipient.lower():
+        problems.append(f"transfer pays {recipient} != recipient {plan.recipient}")
+    if transfer_amount != plan.amount:
+        problems.append(f"transfer amount {transfer_amount} != intended {plan.amount}")
+    if chain_id != plan.chain_id:
+        problems.append(f"chainId {chain_id} != {plan.chain_id}")
+    total_fee = gas * max_fee_per_gas
+    if total_fee > max_fee_wei:
+        problems.append(f"max fee {total_fee} wei exceeds limit {max_fee_wei}")
+
+    return problems
+
+
+@dataclasses.dataclass(frozen=True)
+class TronSendPlan:
+    """What we intend a plain native-TRX send to do."""
+
+    recipient: str  # base58
+    amount_sun: int
+
+
+def verify_tron_send(
+    *,
+    contract_type: str,
+    to_address: str,
+    amount_sun: int,
+    memo: str,
+    plan: TronSendPlan,
+) -> list[str]:
+    """Return reasons a native-TRX send does not match ``plan``; empty means safe."""
+    problems: list[str] = []
+
+    if contract_type != "TransferContract":
+        problems.append(f"contract type {contract_type!r} != 'TransferContract'")
+    if to_address != plan.recipient:
+        problems.append(f"tx pays {to_address} != recipient {plan.recipient}")
+    if amount_sun != plan.amount_sun:
+        problems.append(f"tx amount {amount_sun} sun != intended {plan.amount_sun}")
+    if memo:
+        problems.append(f"plain send must carry no memo, got {memo!r}")
+
+    return problems
+
+
+@dataclasses.dataclass(frozen=True)
+class TronTokenSendPlan:
+    """What we intend a plain TRC-20 send to do: transfer(recipient, amount)."""
+
+    token: str  # base58 TRC-20 contract (the TriggerSmartContract target)
+    recipient: str  # base58 transfer recipient
+    amount: int  # token native units
+
+
+def verify_tron_token_send(
+    *,
+    contract_type: str,
+    trigger_to: str,
+    recipient: str,
+    transfer_amount: int,
+    trx_value: int,
+    memo: str,
+    plan: TronTokenSendPlan,
+) -> list[str]:
+    """Return reasons a TRC-20 send does not match ``plan``; empty means safe."""
+    problems: list[str] = []
+
+    if contract_type != "TriggerSmartContract":
+        problems.append(f"contract type {contract_type!r} != 'TriggerSmartContract'")
+    if trigger_to != plan.token:
+        problems.append(f"tx triggers {trigger_to} != token contract {plan.token}")
+    if recipient != plan.recipient:
+        problems.append(f"transfer pays {recipient} != recipient {plan.recipient}")
+    if transfer_amount != plan.amount:
+        problems.append(f"transfer amount {transfer_amount} != intended {plan.amount}")
+    if trx_value != 0:
+        problems.append(f"token send must not send TRX value (got {trx_value} sun)")
+    if memo:
+        problems.append(f"plain send must carry no memo, got {memo!r}")
+
+    return problems

@@ -320,6 +320,122 @@ def test_send_requires_address_and_amount():
         build_parser().parse_args(["send", "bc1qx"])  # no amount
 
 
+def test_send_rpc_flags_parse():
+    args = build_parser().parse_args(
+        [
+            "send",
+            "0x" + "1" * 40,
+            "--asset",
+            "ETH",
+            "--amount",
+            "1",
+            "--eth-rpc",
+            "https://e.example",
+            "--tron-api",
+            "https://t.example",
+        ]
+    )
+    assert args.eth_rpc == "https://e.example"
+    assert args.tron_api == "https://t.example"
+
+
+ETH_RECIP = "0x1111111111111111111111111111111111111111"
+
+
+class _FakeEthSend:
+    def __init__(self, captured):
+        self._captured = captured
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def derive_address(self, mnemonic):
+        return "0x9858EfFD232B4033E47d90003D41EC34EcaEda94"
+
+    def get_nonce(self, address):
+        return 0
+
+    def fetch_fees(self):
+        return (20_000_000_000, 1_000_000_000)
+
+    def fetch_token_balance(self, token, address):
+        return 2_500_000  # 2.5 USDT (6 dec)
+
+    def token_decimals(self, token):
+        return 6
+
+    def build_and_verify_send(self, **kw):
+        from types import SimpleNamespace
+
+        from cryptoswap_wallet.swap import Prepared
+
+        self._captured.update(kw)
+        return Prepared(
+            quote=None, built=SimpleNamespace(fee=10**14), plan=None, problems=[]
+        )
+
+
+def test_send_eth_native_dry_run(monkeypatch):
+    import cryptoswap_wallet.cli as cli
+
+    captured = {}
+    monkeypatch.setattr(cli, "_load_mnemonic", lambda args: ("mnemonic", ""))
+    monkeypatch.setattr(
+        cli, "_eth_adapter", lambda args, passphrase="": _FakeEthSend(captured)
+    )
+    args = build_parser().parse_args(
+        ["send", ETH_RECIP, "--asset", "ETH", "--amount", "0.001"]
+    )
+    assert cli.cmd_send(args) == 0  # dry run, verify gate clean
+    assert captured["recipient"] == ETH_RECIP
+    assert captured["asset"] == "ETH.ETH"
+    assert captured["amount"] == 100_000  # 0.001 ETH in 1e8 units
+
+
+def test_send_eth_token_sweep_uses_full_balance(monkeypatch):
+    import cryptoswap_wallet.cli as cli
+
+    captured = {}
+    monkeypatch.setattr(cli, "_load_mnemonic", lambda args: ("mnemonic", ""))
+    monkeypatch.setattr(
+        cli, "_eth_adapter", lambda args, passphrase="": _FakeEthSend(captured)
+    )
+    args = build_parser().parse_args(
+        ["send", ETH_RECIP, "--asset", "USDT-ETH", "--amount", "max"]
+    )
+    assert cli.cmd_send(args) == 0
+    assert captured["amount"] == 250_000_000  # 2.5 USDT in 1e8 units
+    assert captured["asset"].startswith("ETH.USDT-")
+
+
+def test_send_eth_rejects_bad_recipient():
+    import cryptoswap_wallet.cli as cli
+
+    args = build_parser().parse_args(
+        ["send", "0xnothex", "--asset", "ETH", "--amount", "1"]
+    )
+    assert cli.cmd_send(args) == 2  # gross-format recipient rejected before build
+
+
+def test_send_tron_native_max_refused():
+    import cryptoswap_wallet.cli as cli
+
+    args = build_parser().parse_args(
+        [
+            "send",
+            "TUEZSdKsoDHQMeZwihtdoBiN46zxhGWYdH",
+            "--asset",
+            "TRX",
+            "--amount",
+            "max",
+        ]
+    )
+    assert cli.cmd_send(args) == 2  # native TRX sweep can't be exact
+
+
 def test_main_version_exits_cleanly(monkeypatch):
     # Exercises main()'s completion gate: with _ARGCOMPLETE unset, argcomplete is
     # never imported and argparse's --version action exits 0.

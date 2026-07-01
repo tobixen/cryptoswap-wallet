@@ -285,6 +285,84 @@ def test_tron_deposit_gate_flags_tampered_amount(monkeypatch):
     assert not prepared.safe
 
 
+# --- plain external send (no swap / memo) ---
+
+SEND_RECIPIENT = "TUEZSdKsoDHQMeZwihtdoBiN46zxhGWYdH"
+
+
+def test_tron_native_send_clean(monkeypatch):
+    adapter = TronAdapter()
+    monkeypatch.setattr(
+        adapter,
+        "build_unsigned_transfer",
+        lambda *, mnemonic, to, amount_sun, memo, **kw: _fake_built(
+            to, amount_sun, memo
+        ),
+    )
+    prepared = adapter.build_and_verify_send(
+        recipient=SEND_RECIPIENT, amount=100_000_000, asset="TRON.TRX", mnemonic="x"
+    )
+    assert prepared.problems == []
+    assert prepared.plan.recipient == SEND_RECIPIENT
+    assert prepared.plan.amount_sun == 1_000_000  # 1 TRX
+
+
+def test_tron_native_send_gate_flags_memo(monkeypatch):
+    adapter = TronAdapter()
+    monkeypatch.setattr(
+        adapter,
+        "build_unsigned_transfer",
+        lambda *, mnemonic, to, amount_sun, memo, **kw: _fake_built(
+            to,
+            amount_sun,
+            "=:sneaky",  # a send must carry no memo
+        ),
+    )
+    prepared = adapter.build_and_verify_send(
+        recipient=SEND_RECIPIENT, amount=100_000_000, asset="TRON.TRX", mnemonic="x"
+    )
+    assert any("memo" in p for p in prepared.problems)
+
+
+def test_tron_token_send_clean(monkeypatch):
+    adapter = TronAdapter()
+    monkeypatch.setattr(
+        adapter,
+        "build_unsigned_trc20_transfer",
+        lambda *, mnemonic, token, to, amount, memo, **kw: _fake_token_built(
+            to, amount, memo
+        ),
+    )
+    prepared = adapter.build_and_verify_send(
+        recipient=SEND_RECIPIENT,
+        amount=2_000_000_000,
+        asset=USDT_TRON_ASSET,
+        mnemonic="x",
+    )
+    assert prepared.problems == []
+    assert prepared.plan.recipient == SEND_RECIPIENT
+    assert prepared.plan.amount == 20_000_000  # 20 USDT (6 dec)
+
+
+def test_tron_token_send_gate_flags_tampered_recipient(monkeypatch):
+    adapter = TronAdapter()
+    # The built transfer pays a DIFFERENT recipient than intended.
+    monkeypatch.setattr(
+        adapter,
+        "build_unsigned_trc20_transfer",
+        lambda *, mnemonic, token, to, amount, memo, **kw: _fake_token_built(
+            "TWhCKmPTJL8k9ugzoQStN68KcAWUSzWWas", amount, memo
+        ),
+    )
+    prepared = adapter.build_and_verify_send(
+        recipient=SEND_RECIPIENT,
+        amount=2_000_000_000,
+        asset=USDT_TRON_ASSET,
+        mnemonic="x",
+    )
+    assert any("recipient" in p for p in prepared.problems)
+
+
 def test_broadcast_translates_tronpy_error_with_headroom_hint():
     from tronpy.exceptions import ValidationError
 

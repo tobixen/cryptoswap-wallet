@@ -197,6 +197,60 @@ def test_eth_token_build_amounts_and_nonces():
     assert len(built.txs) == 2
 
 
+# --- plain external send (no swap / memo / router) ---------------------------
+
+SEND_RECIPIENT = "0x1111111111111111111111111111111111111111"
+_MAX_FEE_WEI = 10**16
+
+
+def _send_kwargs(**over):
+    kw = dict(
+        recipient=SEND_RECIPIENT,
+        amount=100_000,  # 1e8 units -> 0.001 ETH
+        asset="ETH.ETH",
+        mnemonic=MNEMONIC,
+        nonce=3,
+        max_fee_per_gas=20_000_000_000,
+        max_priority_fee_per_gas=1_000_000_000,
+        max_fee_wei=_MAX_FEE_WEI,
+    )
+    kw.update(over)
+    return kw
+
+
+def test_eth_native_send_clean():
+    prepared = EthAdapter().build_and_verify_send(**_send_kwargs())
+    assert prepared.problems == []
+    built = prepared.built
+    assert built.to.lower() == SEND_RECIPIENT
+    assert built.value == 100_000 * 10**10  # 0.001 ETH in wei
+    assert built.data == "0x"  # a plain send carries NO calldata
+    assert built.tx["nonce"] == 3
+    assert built.gas == 21000
+
+
+def test_eth_token_send_transfers_to_recipient():
+    from cryptoswap_wallet.chains.eth import TRANSFER_SELECTOR, _decode_call
+
+    prepared = EthAdapter().build_and_verify_send(
+        **_send_kwargs(asset=USDT_ASSET, amount=250_000_000)  # 2.5 USDT
+    )
+    assert prepared.problems == []
+    built = prepared.built
+    assert built.value == 0
+    assert built.to.lower().endswith("831ec7")  # tx targets the token contract
+    recipient, amount = _decode_call(
+        built.data, TRANSFER_SELECTOR, ["address", "uint256"]
+    )
+    assert recipient.lower() == SEND_RECIPIENT
+    assert amount == 2_500_000  # 2.5 USDT at 6 decimals
+
+
+def test_eth_native_send_fee_ceiling_blocks():
+    prepared = EthAdapter().build_and_verify_send(**_send_kwargs(max_fee_wei=1))
+    assert any("fee" in p for p in prepared.problems)
+
+
 def test_eth_token_verify_clean():
     from cryptoswap_wallet.chains.eth import verify_eth_token_swap
 

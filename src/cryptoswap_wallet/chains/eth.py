@@ -27,9 +27,13 @@ from cryptoswap_wallet.swap import BroadcastError, Prepared, SwapRequest
 from cryptoswap_wallet.thorchain import Quote
 from cryptoswap_wallet.verify import (
     WEI_PER_THORCHAIN_UNIT,
+    EthSendPlan,
     EthSwapPlan,
+    EthTokenSendPlan,
     memo_pays_destination,
+    verify_eth_send,
     verify_eth_swap,
+    verify_eth_token_send,
 )
 
 DEFAULT_ETH_DERIVATION = "m/44'/60'/0'/0/0"
@@ -44,8 +48,13 @@ DEPOSIT_SELECTOR = (
 )
 DECIMALS_SELECTOR = "313ce567"  # decimals()
 BALANCEOF_SELECTOR = "70a08231"  # balanceOf(address)
+TRANSFER_SELECTOR = "a9059cbb"  # transfer(address,uint256) — plain ERC-20 send
 APPROVE_GAS = 70000
 TOKEN_DEPOSIT_GAS = 200000
+# Plain external sends: a bare value transfer is 21000; an ERC-20 transfer() is
+# ~50-65k. These are used by `send` (no router/approve), not the swap path.
+NATIVE_SEND_GAS = 21000
+TOKEN_TRANSFER_GAS = 65000
 
 # ERC-20 tokens the wallet tracks for `balance` (symbol, contract, decimals).
 TRACKED_TOKENS = (
@@ -65,6 +74,15 @@ def encode_approve(router: str, amount: int) -> str:
         "0x"
         + APPROVE_SELECTOR
         + abi_encode(["address", "uint256"], [router, amount]).hex()
+    )
+
+
+def encode_transfer(to: str, amount: int) -> str:
+    """ERC-20 ``transfer(to, amount)`` calldata — a plain send (no router)."""
+    return (
+        "0x"
+        + TRANSFER_SELECTOR
+        + abi_encode(["address", "uint256"], [to, amount]).hex()
     )
 
 
@@ -509,6 +527,133 @@ class EthAdapter(HttpClient):
             max_fee_wei=max_fee_wei,
         )
         return Prepared(quote=quote, built=built, plan=plan, problems=problems)
+
+    def build_and_verify_send(
+        self,
+        *,
+        recipient: str,
+        amount: int,
+        asset: str,
+        mnemonic: str,
+        nonce: int,
+        max_fee_per_gas: int,
+        max_priority_fee_per_gas: int,
+        max_fee_wei: int,
+        path: str = DEFAULT_ETH_DERIVATION,
+    ) -> Prepared:
+        """Build + verify a plain external send (no swap, no memo, no router).
+
+        ``amount`` is in THORChain 1e8 base units. For an ERC-20 (``asset`` like
+        ``ETH.USDT-0x...``) this is a single ``transfer(recipient, amount)`` on
+        the token — no approve, no router. A wrong recipient is irreversible, so
+        the recipient/amount are bound by the verify gate before signing.
+        """
+        if "-" in asset:  # ERC-20 token send
+            return self._build_and_verify_token_send(
+                recipient=recipient,
+                amount=amount,
+                asset=asset,
+                mnemonic=mnemonic,
+                nonce=nonce,
+                max_fee_per_gas=max_fee_per_gas,
+                max_priority_fee_per_gas=max_priority_fee_per_gas,
+                max_fee_wei=max_fee_wei,
+                path=path,
+            )
+        built = self.build_unsigned_swap(
+            mnemonic=mnemonic,
+            vault_address=recipient,
+            amount=amount,
+            memo="",  # a plain send carries no memo -> empty calldata
+            nonce=nonce,
+            gas=NATIVE_SEND_GAS,
+            max_fee_per_gas=max_fee_per_gas,
+            max_priority_fee_per_gas=max_priority_fee_per_gas,
+            path=path,
+        )
+        plan = EthSendPlan(
+            recipient=built.to,
+            amount_wei=amount * WEI_PER_THORCHAIN_UNIT,
+            chain_id=CHAIN_ID,
+        )
+        problems = verify_eth_send(
+            to=built.to,
+            value=built.value,
+            data=built.data,
+            chain_id=built.chain_id,
+            gas=built.gas,
+            max_fee_per_gas=built.max_fee_per_gas,
+            plan=plan,
+            max_fee_wei=max_fee_wei,
+        )
+        return Prepared(quote=None, built=built, plan=plan, problems=problems)
+
+    def _build_and_verify_token_send(
+        self,
+        *,
+        recipient: str,
+        amount: int,
+        asset: str,
+        mnemonic: str,
+        nonce: int,
+        max_fee_per_gas: int,
+        max_priority_fee_per_gas: int,
+        max_fee_wei: int,
+        path: str,
+    ) -> Prepared:
+        account = self._key(mnemonic, path)
+        token = to_checksum_address(asset.split("-", 1)[1])
+        to = to_checksum_address(recipient)
+        decimals = self.token_decimals(asset.split("-", 1)[1])
+        native = amount * 10**decimals // 10**8
+        data = encode_transfer(to, native)
+        tx = {
+            "type": 2,
+            "chainId": CHAIN_ID,
+            "nonce": nonce,
+            "to": token,
+            "value": 0,
+            "gas": TOKEN_TRANSFER_GAS,
+            "maxFeePerGas": max_fee_per_gas,
+            "maxPriorityFeePerGas": max_priority_fee_per_gas,
+            "data": data,
+        }
+        built = EthBuiltSwap(
+            tx=tx,
+            private_key=account.key,
+            to=token,
+            value=0,
+            data=data,
+            chain_id=CHAIN_ID,
+            gas=TOKEN_TRANSFER_GAS,
+            max_fee_per_gas=max_fee_per_gas,
+        )
+        plan = EthTokenSendPlan(
+            token=token, recipient=to, amount=native, chain_id=CHAIN_ID
+        )
+        try:
+            d_recipient, d_amount = _decode_call(
+                data, TRANSFER_SELECTOR, ["address", "uint256"]
+            )
+        except Exception:  # noqa: BLE001 - any decode failure is a reject
+            return Prepared(
+                quote=None,
+                built=built,
+                plan=plan,
+                problems=["transfer calldata could not be decoded"],
+            )
+        problems = verify_eth_token_send(
+            to=built.to,
+            value=built.value,
+            chain_id=built.chain_id,
+            recipient=d_recipient,
+            transfer_amount=d_amount,
+            gas=built.gas,
+            max_fee_per_gas=built.max_fee_per_gas,
+            plan=plan,
+            max_fee_wei=max_fee_wei,
+        )
+        return Prepared(quote=None, built=built, plan=plan, problems=problems)
 
     def build_and_verify_deposit(
         self,
