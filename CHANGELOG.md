@@ -19,8 +19,9 @@ automatically from git tags (PEP 440 / SemVer).
   USDT-TRON
   (TRC-20) as sources; BTC,
   ETH, TRX, USDT-TRON, USDT-ETH, USDC-ETH and (external-`--dest`-only) LTC, DOGE,
-  BCH as
-  destinations. `--amount max` sweep for BTC/ETH (swap and add-liquidity) and
+  BCH, DASH as
+  destinations (DASH is Maya-only — routes via `--backend maya`/`auto`; see
+  `docs/dash.md`). `--amount max` sweep for BTC/ETH (swap and add-liquidity) and
   for ERC-20/TRC-20 token sources (USDT-ETH, USDC-ETH, USDT-TRON) on swap — the whole
   token balance, exact since the fee is paid in the native coin, not the token.
   The TRX source signs a native TransferContract with
@@ -30,6 +31,11 @@ automatically from git tags (PEP 440 / SemVer).
   binds the token, recipient, amount and memo.
 - Permissive `--dest` sanity check (network/format) to catch gross typos before
   a swap is quoted or broadcast.
+- Itemised cost breakdown on `quote`/`swap` (slip/swap fee, flat outbound fee,
+  quoted total in `bps`; the inbound source-chain tx fee is shown separately),
+  plus a best-effort `market:` line comparing the quoted output to a public spot
+  price (CoinGecko) to surface the *total* realised cost — protocol fees, slip,
+  and the pool-vs-market spread. On by default; `--no-price-check` disables it.
 - `swap --tolerance-bps` (default 300) to widen the slippage/fee tolerance for
   small or high-fee swaps THORChain refuses at the default. A rejected quote now
   aborts cleanly with an actionable message (no traceback); the common

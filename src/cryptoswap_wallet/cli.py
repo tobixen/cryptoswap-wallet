@@ -433,6 +433,62 @@ def _select_backend(  # noqa: ANN202 (Backend, lazy import)
     return backend
 
 
+def _market_comparison(
+    from_key: str, to_key: str, amount_units: int, quoted_out_units: int
+) -> str | None:
+    """Best-effort 'vs public spot' line, or None if unavailable/not mappable.
+
+    Compares the quoted output against what an external mid-price swap would
+    yield, surfacing the *total* realised cost (fees + slip + the pool-vs-market
+    spread arbitrageurs earn). Never raises: a feed failure just drops the line.
+    """
+    from cryptoswap_wallet.pricefeed import (
+        COINGECKO_IDS,
+        PriceFeed,
+        loss_vs_market_bps,
+        market_out,
+    )
+
+    id_from = COINGECKO_IDS.get(from_key)
+    id_to = COINGECKO_IDS.get(to_key)
+    if not id_from or not id_to:
+        return None
+    try:
+        with PriceFeed() as feed:
+            prices = feed.spot_usd([id_from, id_to])
+        market = market_out(
+            amount_units / THORCHAIN_UNIT, prices[id_from], prices[id_to]
+        )
+    except (*HTTP_ERRORS, KeyError, ValueError, ZeroDivisionError):
+        return None
+    quoted = quoted_out_units / THORCHAIN_UNIT
+    bps = loss_vs_market_bps(quoted, market)
+    return (
+        f"market:  ~{market:.8f} {to_key} at spot (CoinGecko)"
+        f"  ->  ~{bps:.0f} bps total vs market (fees+slip+spread)"
+    )
+
+
+def _print_swap_costs(
+    quote,  # noqa: ANN001
+    from_key: str,
+    to_key: str,
+    amount_units: int,
+    *,
+    price_check: bool,
+) -> None:
+    """Print the itemised quoted-cost breakdown, plus an optional market line."""
+    print("cost:")
+    for line in quote.fees.breakdown(to_key):
+        print(line)
+    if price_check:
+        line = _market_comparison(
+            from_key, to_key, amount_units, quote.expected_amount_out
+        )
+        if line:
+            print(line)
+
+
 def cmd_quote(args: argparse.Namespace) -> int:
     if args.amount == "max":
         print("quote needs a numeric amount ('max' is only for swap)", file=sys.stderr)
@@ -454,12 +510,15 @@ def cmd_quote(args: argparse.Namespace) -> int:
         if not results:
             print("no backend can serve this swap", file=sys.stderr)
             return 1
-        chosen, _ = best_quote(results)
+        chosen, chosen_quote = best_quote(results)
         print(f"in:     {args.amount} {args.from_}  ->  {args.to_}")
         for backend, quote in sorted(results, key=lambda p: -p[1].expected_amount_out):
             out = quote.expected_amount_out / THORCHAIN_UNIT
             mark = "  <- best" if backend is chosen else ""
             print(f"  {backend.name:9} {out:.8f}  ({quote.fees.total_bps} bps){mark}")
+        _print_swap_costs(
+            chosen_quote, args.from_, args.to_, amount, price_check=args.price_check
+        )
         return 0
     finally:
         for backend in backends:
@@ -749,7 +808,14 @@ def _swap_from_btc(args: argparse.Namespace) -> int:
             print(f"send:    {amount} sats to {prepared.quote.inbound_address}")
             print(f"expect:  {out:.8f} {args.to_} -> {dest}")
             print(f"memo:    {prepared.quote.memo}")
-            print(f"btc fee: {prepared.built.fee} sats @ {fee_rate} sat/vB")
+            _print_swap_costs(
+                prepared.quote,
+                args.from_,
+                args.to_,
+                amount,
+                price_check=args.price_check,
+            )
+            print(f"inbound: {prepared.built.fee} sats on BTC @ {fee_rate} sat/vB")
             return _confirm_and_execute(prepared, adapter, args)
 
 
@@ -848,7 +914,14 @@ def _swap_from_eth(args: argparse.Namespace) -> int:
             print(f"send:    {amount_in:.8f} {args.from_} to {vault}")
             print(f"expect:  {out:.8f} {args.to_} -> {dest}")
             print(f"memo:    {prepared.quote.memo}")
-            print(f"max fee: {max_fee_eth:.6f} ETH ({len(prepared.built.txs)} tx)")
+            _print_swap_costs(
+                prepared.quote,
+                args.from_,
+                args.to_,
+                amount,
+                price_check=args.price_check,
+            )
+            print(f"inbound: {max_fee_eth:.6f} ETH max ({len(prepared.built.txs)} tx)")
             return _confirm_and_execute(prepared, adapter, args)
 
 
@@ -929,7 +1002,10 @@ def _swap_from_tron(args: argparse.Namespace) -> int:
             print(f"send:    {prepared.plan.amount_sun} sun to {vault}")
         print(f"expect:  {out:.8f} {args.to_} -> {dest}")
         print(f"memo:    {prepared.quote.memo}")
-        print("trx fee: paid from spare TRX (bandwidth/energy), NOT the sent amount")
+        _print_swap_costs(
+            prepared.quote, args.from_, args.to_, amount, price_check=args.price_check
+        )
+        print("inbound: paid from spare TRX (bandwidth/energy), NOT the sent amount")
         print("         -> keep some TRX headroom below your balance")
         return _confirm_and_execute(prepared, adapter, args)
 
@@ -1200,6 +1276,19 @@ def _add_swap_args(sub: argparse.ArgumentParser) -> None:
         choices=["thorchain", "maya", "auto"],
         default="auto",
         help="swap backend (auto = lowest price across all)",
+    )
+    sub.add_argument(
+        "--price-check",
+        dest="price_check",
+        action="store_true",
+        default=True,
+        help="compare the quote against a public spot price (CoinGecko); default on",
+    )
+    sub.add_argument(
+        "--no-price-check",
+        dest="price_check",
+        action="store_false",
+        help="skip the external spot-price comparison",
     )
 
 

@@ -18,6 +18,23 @@ def test_swap_defaults():
     assert args.confirm is False
 
 
+def test_price_check_defaults_on_and_can_be_disabled():
+    on = build_parser().parse_args(["swap", "--amount", "0.001"])
+    assert on.price_check is True
+    off = build_parser().parse_args(["swap", "--amount", "0.001", "--no-price-check"])
+    assert off.price_check is False
+    # quote gets the same flag (shared _add_swap_args).
+    q = build_parser().parse_args(["quote", "--amount", "0.001", "--no-price-check"])
+    assert q.price_check is False
+
+
+def test_market_comparison_skips_unmapped_asset_without_network():
+    from cryptoswap_wallet.cli import _market_comparison
+
+    # RUNE has no CoinGecko id in the map -> returns None before any HTTP call.
+    assert _market_comparison("RUNE", "BTC", 100_000_000, 1) is None
+
+
 def test_swap_confirm_and_target():
     args = build_parser().parse_args(
         ["swap", "--amount", "0.01", "--to", "TRX", "--confirm"]

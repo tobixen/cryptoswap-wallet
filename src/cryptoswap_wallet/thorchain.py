@@ -67,6 +67,30 @@ class SwapFees:
     slippage_bps: int
     total_bps: int
 
+    def breakdown(self, symbol: str) -> list[str]:
+        """Itemised, human-readable cost lines for the destination ``symbol``.
+
+        All amounts are in the destination asset (THORChain 1e8 base units).
+        On THORChain the *liquidity* fee **is** the slip (a bigger trade vs. the
+        pool depth costs more), so it is labelled slip/swap; ``outbound`` is the
+        flat fee to deliver the output on the destination chain. This is the
+        quoted cost only — the inbound (source-chain) tx fee is separate and
+        printed by the per-chain swap path.
+        """
+        unit = THORCHAIN_UNIT
+        lines = [
+            f"  slip/swap fee  {self.liquidity / unit:.8f} {symbol}"
+            f"  ({self.slippage_bps} bps)",
+            f"  outbound fee   {self.outbound / unit:.8f} {symbol}  (flat)",
+        ]
+        if self.affiliate:
+            lines.append(f"  affiliate      {self.affiliate / unit:.8f} {symbol}")
+        lines.append(
+            f"  quoted total   {self.total / unit:.8f} {symbol}"
+            f"  ({self.total_bps} bps of input)"
+        )
+        return lines
+
 
 @dataclasses.dataclass(frozen=True)
 class Quote:

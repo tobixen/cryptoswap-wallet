@@ -109,6 +109,34 @@ def test_parse_quote_btc_to_eth():
     assert q.router is None
 
 
+def test_swapfees_breakdown_itemises_slip_outbound_total():
+    q = parse_quote(BTC_TO_ETH_QUOTE)
+    lines = q.fees.breakdown("ETH")
+    body = "\n".join(lines)
+    # slip == liquidity fee, shown with its bps; outbound is the flat dest fee;
+    # total carries the total_bps. No affiliate line when affiliate is 0.
+    assert f"{q.fees.liquidity / 10**8:.8f} ETH" in body
+    assert f"({q.fees.slippage_bps} bps)" in body
+    assert f"{q.fees.outbound / 10**8:.8f} ETH" in body
+    assert f"({q.fees.total_bps} bps of input)" in body
+    assert not any("affiliate" in ln for ln in lines)
+
+
+def test_swapfees_breakdown_shows_affiliate_when_nonzero():
+    from cryptoswap_wallet.thorchain import SwapFees
+
+    fees = SwapFees(
+        asset="ETH.ETH",
+        outbound=15442,
+        affiliate=5000,
+        liquidity=767328,
+        total=787770,
+        slippage_bps=20,
+        total_bps=21,
+    )
+    assert any("affiliate" in ln for ln in fees.breakdown("ETH"))
+
+
 def test_parse_quote_evm_source_has_router():
     q = parse_quote(ETH_TO_TRX_QUOTE)
     assert q.router == "0xD37BbE5744D730a1d98d8DC97c42F0Ca46aD7146"
