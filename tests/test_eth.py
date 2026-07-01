@@ -251,6 +251,18 @@ def test_eth_native_send_fee_ceiling_blocks():
     assert any("fee" in p for p in prepared.problems)
 
 
+def test_eth_chain_id_is_configurable_for_testnet():
+    # A Sepolia adapter must sign for chain id 11155111, and the gate must accept
+    # it (plan.chain_id follows the adapter, not a hardcoded mainnet 1).
+    sepolia = EthAdapter(chain_id=11155111)
+    prepared = sepolia.build_and_verify_send(**_send_kwargs())
+    assert prepared.problems == []
+    assert prepared.built.chain_id == 11155111
+    assert prepared.built.tx["chainId"] == 11155111
+    # Default stays mainnet.
+    assert EthAdapter().chain_id == 1
+
+
 def test_eth_token_verify_clean():
     from cryptoswap_wallet.chains.eth import verify_eth_token_swap
 

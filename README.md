@@ -19,11 +19,6 @@ binary on your PATH. Then run `cryptoswap-wallet --help`.
 
 ## Features
 
-Swaps default to a **dry run** (build + verify + print); `--confirm`
-is required to broadcast, and `--yes` skips the interactive
-confirmation prompt. Destination addresses auto-derive from the seed;
-pass `--dest` to override.
-
 The wallet is still under rapid development as of 2026-06-29.  Missing features and currency support will be prioritized by personal need and by issues/PRs received.  Here is the "current status" of (partially) supported currencies (✅ = working, ◑ = partial, blank = not yet):
 
 | Currency  | Hold | Bal | To  | From | Send | Sweep | Liq |
@@ -81,7 +76,7 @@ capability grid above for the per-feature detail.
 | AVAX | Avalanche C-Chain | EVM | none | |
 | BASE | Base (ETH L2) | EVM | none | |
 | ARB | Arbitrum (ETH L2) | EVM | none | Maya-only |
-| USDC | USD Coin (ETH/BSC/AVAX/BASE/ARB) | ERC-20 token | partial | ETH done (no `send` yet, like USDT-ETH); AVAX/BASE/ARB need new EVM chain adapters; BSC additionally blocked by the THORChain halt |
+| USDC | USD Coin (ETH/BSC/AVAX/BASE/ARB) | ERC-20 token | partial | ETH done (incl. `send`, via the shared ERC-20 path); AVAX/BASE/ARB need new EVM chain adapters; BSC additionally blocked by the THORChain halt |
 | LTC | Litecoin | UTXO | partial | destination only (via `--dest`) |
 | DOGE | Dogecoin | UTXO | partial | destination only (via `--dest`) |
 | BCH | Bitcoin Cash | UTXO | partial | destination only (via `--dest`) |
@@ -118,6 +113,12 @@ cryptoswap-wallet send  T...recipient --asset USDT-TRON --amount 25     # TRC-20
 
 Defaults are `--from BTC --to ETH`. `--confirm` prints the freshly-quoted swap
 and asks before broadcasting (`--yes` skips the prompt for automation).
+
+Swaps default to a **dry run** (build + verify + print); `--confirm`
+is required to broadcast, and `--yes` skips the interactive
+confirmation prompt. Destination addresses auto-derive from the seed;
+pass `--dest` to override.
+
 
 Config via flags or env: keystore `$CRYPTOSWAP_WALLET_KEYSTORE`
 (`~/.config/cryptoswap-wallet/keystore.json`), passphrase
@@ -156,6 +157,24 @@ funded Nile account is provided via env / CI secrets:
 CRYPTOSWAP_WALLET_NILE_MNEMONIC=...  # Nile account holding the token + some TRX
 CRYPTOSWAP_WALLET_NILE_TOKEN=T...    # a TRC-20 contract (base58) the account holds
 CRYPTOSWAP_WALLET_NILE_RECIPIENT=T...  # optional; defaults to a self-transfer
+```
+
+Two more opt-in tests (`tests/test_integration_testnet.py`) prove the **`send`
+spending path end to end** on public testnets — build → sign → broadcast →
+confirm a real (valueless) transfer, defaulting to a self-send. They skip unless
+a funded testnet account our wallet *derives* is provided (the test prints the
+address to fund):
+
+```sh
+# BTC testnet3 (sweeps the wallet's testnet UTXOs to itself)
+CRYPTOSWAP_WALLET_BTC_TESTNET_MNEMONIC=...    # a funded testnet account
+CRYPTOSWAP_WALLET_BTC_TESTNET_ESPLORA=...     # optional; defaults to blockstream testnet
+CRYPTOSWAP_WALLET_BTC_TESTNET_RECIPIENT=tb1.. # optional; defaults to a self-send
+
+# ETH Sepolia (self-sends 0.001 ETH, chain id 11155111)
+CRYPTOSWAP_WALLET_ETH_SEPOLIA_MNEMONIC=...    # a funded Sepolia account
+CRYPTOSWAP_WALLET_ETH_SEPOLIA_RPC=...         # optional; defaults to a public Sepolia RPC
+CRYPTOSWAP_WALLET_ETH_SEPOLIA_RECIPIENT=0x..  # optional; defaults to a self-send
 ```
 
 ## Releasing

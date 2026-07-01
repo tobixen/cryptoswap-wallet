@@ -27,6 +27,13 @@ def test_derive_address_matches_bip84_vector():
     assert BtcAdapter().derive_address(MNEMONIC, PATH) == EXPECTED_ADDR
 
 
+def test_testnet_network_derives_testnet_address():
+    # A testnet adapter derives a tb1 (bech32 testnet) address, not bc1 mainnet.
+    addr = BtcAdapter(network="testnet").derive_address(MNEMONIC, PATH)
+    assert addr.startswith("tb1")
+    assert BtcAdapter().network == "bitcoin"  # default stays mainnet
+
+
 def test_built_swap_passes_verify_gate():
     a = BtcAdapter()
     addr = a.derive_address(MNEMONIC, PATH)

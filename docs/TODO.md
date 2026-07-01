@@ -53,7 +53,21 @@ Owner's requested order; two-sided liquidity comes *after* these.
 
 ## Integration tests towards testnet / stagenet
 
-...
+Done: opt-in full-loop **`send`** broadcast tests on **BTC testnet3** and **ETH
+Sepolia** (`tests/test_integration_testnet.py`), gated on funded testnet accounts
+via env / CI secrets (skip otherwise), mirroring the Nile TRC-20 loop. The BTC
+and ETH adapters are now network-parameterized (`BtcAdapter(network=...)`,
+`EthAdapter(chain_id=...)`) so mainnet stays the default. This proves the account
++ UTXO spending path end to end for the first time.
+
+Still to do:
+- **Sepolia token send** (USDT/USDC on Sepolia) — the token-swap gate still bakes
+  in mainnet `CHAIN_ID`; parameterize it (fold into A2/A3) to testnet-cover the
+  ERC-20 send/swap path too.
+- **THORChain stagenet swaps** — a real cross-chain swap loop (deposit on one
+  testnet, receive on another) needs a stagenet vault + memo, a bigger lift.
+- Wire the testnet secrets into the CI **Integration (network)** workflow so the
+  broadcast loops run there, not just locally.
 
 ## Spend unconfirmed inbound via CPFP (`--allow-unconfirmed`)
 

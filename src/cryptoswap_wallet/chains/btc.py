@@ -100,14 +100,18 @@ class BtcAdapter(HttpClient):
         esplora_url: str = DEFAULT_ESPLORA,
         timeout: float = 20.0,
         bip39_passphrase: str = "",
+        network: str = "bitcoin",
     ) -> None:
         super().__init__(timeout)
         self.esplora_url = esplora_url.rstrip("/")
         self.bip39_passphrase = bip39_passphrase
+        # bitcoinlib network name: "bitcoin" (mainnet) or "testnet"/"signet".
+        # Set alongside a matching testnet Esplora URL to spend on a testnet.
+        self.network = network
 
     def _hdkey(self, mnemonic: str, path: str) -> HDKey:
         seed = Mnemonic().to_seed(mnemonic, self.bip39_passphrase)
-        return HDKey.from_seed(seed, network="bitcoin").key_for_path(path)
+        return HDKey.from_seed(seed, network=self.network).key_for_path(path)
 
     def derive_address(self, mnemonic: str, path: str = DEFAULT_DERIVATION) -> str:
         return self._hdkey(mnemonic, path).address(
@@ -145,7 +149,7 @@ class BtcAdapter(HttpClient):
             sel = select_coins(utxos, amount, fee_rate, len(memo_bytes))
             chosen, fee, change = sel.utxos, sel.fee, sel.change
 
-        tx = Transaction(network="bitcoin", witness_type="segwit")
+        tx = Transaction(network=self.network, witness_type="segwit")
         keys: list[HDKey] = []
         for utxo in chosen:
             key = self._hdkey(mnemonic, utxo.path or default_path)

@@ -263,10 +263,16 @@ class EthAdapter(HttpClient):
         rpc_url: str = DEFAULT_RPC,
         timeout: float = 20.0,
         bip39_passphrase: str = "",
+        chain_id: int = CHAIN_ID,
     ) -> None:
         super().__init__(timeout)
         self.rpc_url = rpc_url
         self.bip39_passphrase = bip39_passphrase
+        # EVM chain id used when building/signing txs (1 = mainnet). Set to a
+        # testnet id (e.g. Sepolia 11155111) alongside a matching RPC to send on
+        # a testnet. Only wired through the native + send paths; token swaps stay
+        # mainnet-only for now.
+        self.chain_id = chain_id
 
     def _key(self, mnemonic: str, path: str) -> LocalAccount:
         return Account.from_mnemonic(
@@ -384,7 +390,7 @@ class EthAdapter(HttpClient):
         data = "0x" + memo.encode().hex()
         tx = {
             "type": 2,
-            "chainId": CHAIN_ID,
+            "chainId": self.chain_id,
             "nonce": nonce,
             "to": to,
             "value": value,
@@ -399,7 +405,7 @@ class EthAdapter(HttpClient):
             to=to,
             value=value,
             data=data,
-            chain_id=CHAIN_ID,
+            chain_id=self.chain_id,
             gas=gas,
             max_fee_per_gas=max_fee_per_gas,
         )
@@ -574,7 +580,7 @@ class EthAdapter(HttpClient):
         plan = EthSendPlan(
             recipient=built.to,
             amount_wei=amount * WEI_PER_THORCHAIN_UNIT,
-            chain_id=CHAIN_ID,
+            chain_id=self.chain_id,
         )
         problems = verify_eth_send(
             to=built.to,
@@ -609,7 +615,7 @@ class EthAdapter(HttpClient):
         data = encode_transfer(to, native)
         tx = {
             "type": 2,
-            "chainId": CHAIN_ID,
+            "chainId": self.chain_id,
             "nonce": nonce,
             "to": token,
             "value": 0,
@@ -624,12 +630,12 @@ class EthAdapter(HttpClient):
             to=token,
             value=0,
             data=data,
-            chain_id=CHAIN_ID,
+            chain_id=self.chain_id,
             gas=TOKEN_TRANSFER_GAS,
             max_fee_per_gas=max_fee_per_gas,
         )
         plan = EthTokenSendPlan(
-            token=token, recipient=to, amount=native, chain_id=CHAIN_ID
+            token=token, recipient=to, amount=native, chain_id=self.chain_id
         )
         try:
             d_recipient, d_amount = _decode_call(

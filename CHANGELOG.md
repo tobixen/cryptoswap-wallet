@@ -49,5 +49,10 @@ automatically from git tags (PEP 440 / SemVer).
   verify gate binding recipient + amount and rejecting any memo/router/extra
   calldata; the recipient is sanity-checked before building. ERC-20/TRC-20 sends
   are a routerless, approveless `transfer(recipient, amount)`.
+- Network-parameterized BTC and ETH adapters (`BtcAdapter(network=...)`,
+  `EthAdapter(chain_id=...)`; mainnet stays the default) plus opt-in full-loop
+  `send` broadcast tests on BTC testnet3 and ETH Sepolia (skipped unless funded
+  testnet accounts are supplied via env) — the first end-to-end proof of the
+  spending path.
 - Packaging: Hatch + hatch-vcs, `make install`, `--version`, CI, and PyPI
   trusted-publishing gated on the live integration tests.
