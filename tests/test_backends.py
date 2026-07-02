@@ -72,3 +72,66 @@ def test_gather_quotes_threads_tolerance_bps():
         tolerance_bps=1500,
     )
     assert captured.get("tolerance_bps") == 1500
+
+
+def test_gather_quotes_threads_streaming_params():
+    captured = {}
+
+    class CapturingClient:
+        def quote_swap(self, *args, **kwargs):
+            captured.update(kwargs)
+            return make_quote(100)
+
+    gather_quotes(
+        [Backend("x", CapturingClient())],
+        "BTC.BTC",
+        "ETH.ETH",
+        178100,
+        "0xdest",
+        streaming_interval=1,
+        streaming_quantity=0,
+    )
+    assert captured.get("streaming_interval") == 1
+    assert captured.get("streaming_quantity") == 0
+
+
+def test_streaming_drops_tolerance_bps():
+    # A tolerance limit and streaming don't mix on THORChain/Maya, so when both
+    # are supplied streaming wins and tolerance_bps is not sent.
+    captured = {}
+
+    class CapturingClient:
+        def quote_swap(self, *args, **kwargs):
+            captured.update(kwargs)
+            return make_quote(100)
+
+    gather_quotes(
+        [Backend("x", CapturingClient())],
+        "BTC.BTC",
+        "ETH.ETH",
+        178100,
+        "0xdest",
+        tolerance_bps=300,
+        streaming_interval=1,
+    )
+    assert captured.get("streaming_interval") == 1
+    # Passed explicitly as None (LIM=0), not merely omitted — omitting would let
+    # the client's DEFAULT_TOLERANCE_BPS refuse the streamed swap.
+    assert "tolerance_bps" in captured
+    assert captured["tolerance_bps"] is None
+
+
+def test_gather_quotes_omits_streaming_when_not_requested():
+    captured = {}
+
+    class CapturingClient:
+        def quote_swap(self, *args, **kwargs):
+            captured.update(kwargs)
+            return make_quote(100)
+
+    gather_quotes(
+        [Backend("x", CapturingClient())], "BTC.BTC", "ETH.ETH", 178100, "0xdest"
+    )
+    # Not passed at all (not even as None) so the client default applies.
+    assert "streaming_interval" not in captured
+    assert "streaming_quantity" not in captured

@@ -395,6 +395,14 @@ def _backends_for(args: argparse.Namespace):  # noqa: ANN202 (list[Backend], laz
     return [get_backend(args.backend)]
 
 
+def _streaming_kwargs(args: argparse.Namespace) -> dict[str, int | None]:
+    """Streaming-swap quote kwargs from the parsed args (None when not requested)."""
+    return {
+        "streaming_interval": getattr(args, "stream_interval", None),
+        "streaming_quantity": getattr(args, "stream_quantity", None),
+    }
+
+
 def _select_backend(  # noqa: ANN202 (Backend, lazy import)
     args: argparse.Namespace,
     *,
@@ -418,7 +426,13 @@ def _select_backend(  # noqa: ANN202 (Backend, lazy import)
     if len(backends) == 1:
         return backends[0]
     results = gather_quotes(
-        backends, from_asset, to_asset, amount, destination, tolerance_bps=tolerance_bps
+        backends,
+        from_asset,
+        to_asset,
+        amount,
+        destination,
+        tolerance_bps=tolerance_bps,
+        **_streaming_kwargs(args),
     )
     if not results:
         for unused in backends:
@@ -478,7 +492,16 @@ def _print_swap_costs(
     price_check: bool,
 ) -> None:
     """Print the itemised quoted-cost breakdown, plus an optional market line."""
-    print("cost:")
+    # A streaming swap: the network split the trade to cut slip. blocks == 0
+    # means it decided no streaming was needed (small/low-slip trade), so the
+    # line only appears when streaming is actually in effect.
+    if getattr(quote, "streaming_swap_blocks", 0):
+        mins = quote.total_swap_seconds / 60
+        print(
+            f"stream:  ~{quote.max_streaming_quantity} sub-swaps over "
+            f"{quote.streaming_swap_blocks} blocks (~{mins:.0f} min) to cut slippage"
+        )
+    print("cost: (100 bps = 1%)")
     for line in quote.fees.breakdown(to_key):
         print(line)
     if price_check:
@@ -505,7 +528,12 @@ def cmd_quote(args: argparse.Namespace) -> int:
     backends = _backends_for(args)
     try:
         results = gather_quotes(
-            backends, ASSET[args.from_], ASSET[args.to_], amount, dest
+            backends,
+            ASSET[args.from_],
+            ASSET[args.to_],
+            amount,
+            dest,
+            **_streaming_kwargs(args),
         )
         if not results:
             print("no backend can serve this swap", file=sys.stderr)
@@ -790,6 +818,7 @@ def _swap_from_btc(args: argparse.Namespace) -> int:
                     now=int(time.time()),
                     mnemonic=mnemonic,
                     tolerance_bps=args.tolerance_bps,
+                    **_streaming_kwargs(args),
                     scanned_utxos=utxos,
                     fee_rate=fee_rate,
                     change_address=change_address,
@@ -896,6 +925,7 @@ def _swap_from_eth(args: argparse.Namespace) -> int:
                     now=int(time.time()),
                     mnemonic=mnemonic,
                     tolerance_bps=args.tolerance_bps,
+                    **_streaming_kwargs(args),
                     nonce=nonce,
                     gas=args.eth_gas,
                     max_fee_per_gas=max_fee_per_gas,
@@ -988,6 +1018,7 @@ def _swap_from_tron(args: argparse.Namespace) -> int:
                     now=int(time.time()),
                     mnemonic=mnemonic,
                     tolerance_bps=args.tolerance_bps,
+                    **_streaming_kwargs(args),
                 )
         except (SwapAborted, ValueError) as exc:
             print(f"ABORTED: {exc}", file=sys.stderr)
@@ -1254,6 +1285,19 @@ def _amount(value: str) -> Decimal | str:
     return amount
 
 
+def _nonneg_int(value: str) -> int:
+    """argparse type for a non-negative integer (streaming quantity: 0 = auto)."""
+    try:
+        n = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(
+            f"expected an integer, got {value!r}"
+        ) from None
+    if n < 0:
+        raise argparse.ArgumentTypeError(f"must be >= 0, got {n}")
+    return n
+
+
 def _base_units(amount: Decimal) -> int:
     """Scale a human ``--amount`` (whole --from units) to THORChain 1e8 base units.
 
@@ -1289,6 +1333,20 @@ def _add_swap_args(sub: argparse.ArgumentParser) -> None:
         dest="price_check",
         action="store_false",
         help="skip the external spot-price comparison",
+    )
+    sub.add_argument(
+        "--stream-interval",
+        type=_nonneg_int,
+        metavar="BLOCKS",
+        help="streaming swap: blocks between sub-swaps (>=1). Splits the trade "
+        "over time to cut slippage, at the cost of a longer settlement",
+    )
+    sub.add_argument(
+        "--stream-quantity",
+        type=_nonneg_int,
+        metavar="N",
+        help="streaming swap: number of sub-swaps (0/omit = let the network pick "
+        "the count that minimises slippage). Only used with --stream-interval",
     )
 
 

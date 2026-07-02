@@ -104,6 +104,89 @@ def test_memo_too_long_for_op_return():
     assert any("80" in p for p in problems)
 
 
+# --- streaming swaps: the memo gains a `LIM/INTERVAL/QUANTITY` suffix ---
+#
+# A streaming swap only rewrites the memo's limit field (e.g. `…:6700000` ->
+# `…:6700000/1/0`). The gate binds the tx memo to the quote's memo verbatim and
+# additionally checks our destination is present, so the suffix must neither
+# break a legitimate streaming swap nor weaken the destination-binding check.
+
+STREAM_DEST = "0x1111111111111111111111111111111111111111"
+STREAM_MEMO = f"=:ETH.ETH:{STREAM_DEST}:6700000/1/0"
+
+
+def _stream_outputs(memo):
+    return [
+        TxOutput(address=VAULT, value=178100),
+        TxOutput(address=CHANGE, value=50000),
+        TxOutput(address=None, value=0, op_return_data=memo.encode()),
+    ]
+
+
+def test_streaming_memo_is_accepted_and_still_binds_destination():
+    plan = SwapPlan(
+        inbound_address=VAULT,
+        amount=178100,
+        memo=STREAM_MEMO,
+        expiry=2000,
+        destination=STREAM_DEST,
+    )
+    problems = verify_btc_swap(
+        _stream_outputs(STREAM_MEMO),
+        fee=600,
+        plan=plan,
+        owned_addresses=OWNED,
+        now=1000,
+        max_fee=10000,
+    )
+    assert problems == []
+
+
+def test_streaming_memo_that_pays_someone_else_is_rejected():
+    # Same streaming shape, but the memo pays a *different* address than our
+    # destination -> the destination-binding check must still fire.
+    other = "0x2222222222222222222222222222222222222222"
+    memo = f"=:ETH.ETH:{other}:6700000/1/0"
+    plan = SwapPlan(
+        inbound_address=VAULT,
+        amount=178100,
+        memo=memo,
+        expiry=2000,
+        destination=STREAM_DEST,
+    )
+    problems = verify_btc_swap(
+        _stream_outputs(memo),
+        fee=600,
+        plan=plan,
+        owned_addresses=OWNED,
+        now=1000,
+        max_fee=10000,
+    )
+    assert any("does not pay destination" in p for p in problems)
+
+
+def test_streaming_memo_tampered_output_is_rejected():
+    # The tx must carry exactly the quoted (streaming) memo: a swapped-in memo
+    # missing the streaming suffix is a mismatch and blocks.
+    plan = SwapPlan(
+        inbound_address=VAULT,
+        amount=178100,
+        memo=STREAM_MEMO,
+        expiry=2000,
+        destination=STREAM_DEST,
+    )
+    tampered = f"=:ETH.ETH:{STREAM_DEST}:6700000"  # streaming suffix stripped
+    problems = verify_btc_swap(
+        _stream_outputs(tampered),
+        fee=600,
+        plan=plan,
+        owned_addresses=OWNED,
+        now=1000,
+        max_fee=10000,
+    )
+    assert any("memo" in p.lower() for p in problems)
+
+
 # --- BTC plain-send verify gate (no vault, no memo) ---
 
 SEND_PLAN = SendPlan(recipient=RECIPIENT, amount=100_000)

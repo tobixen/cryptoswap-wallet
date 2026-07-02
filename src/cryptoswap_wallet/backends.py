@@ -52,15 +52,31 @@ def gather_quotes(
     destination: str | None,
     *,
     tolerance_bps: int | None = None,
+    streaming_interval: int | None = None,
+    streaming_quantity: int | None = None,
 ) -> list[tuple[Backend, Quote]]:
     """Quote every backend; drop ones that can't serve this swap (no pool, halted,
     below minimum, no memo, or a network error).
 
     ``tolerance_bps`` is threaded into each quote when given, so backend
     selection happens at the same tolerance the swap will lock in; when omitted,
-    the client's default tolerance applies.
+    the client's default tolerance applies. ``streaming_interval``/
+    ``streaming_quantity`` request a streaming (slip-reducing) quote so backend
+    selection reflects the same streamed price the swap will use.
     """
-    extra = {} if tolerance_bps is None else {"tolerance_bps": tolerance_bps}
+    extra: dict[str, int | None] = {}
+    if streaming_interval is not None:
+        # A tolerance limit and streaming don't mix on THORChain/Maya: a tight
+        # price limit defeats streaming's own slip management, and the node then
+        # reports the base (non-streamed) emit and refuses. Force LIM=0 by
+        # passing tolerance_bps=None *explicitly* — merely omitting it would let
+        # the client fall back to its DEFAULT_TOLERANCE_BPS and refuse the swap.
+        extra["streaming_interval"] = streaming_interval
+        if streaming_quantity is not None:
+            extra["streaming_quantity"] = streaming_quantity
+        extra["tolerance_bps"] = None
+    elif tolerance_bps is not None:
+        extra["tolerance_bps"] = tolerance_bps
     results: list[tuple[Backend, Quote]] = []
     for backend in backends:
         try:

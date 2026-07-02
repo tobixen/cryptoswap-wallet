@@ -28,6 +28,36 @@ def test_price_check_defaults_on_and_can_be_disabled():
     assert q.price_check is False
 
 
+def test_streaming_flags_parse_and_default_to_none():
+    plain = build_parser().parse_args(["swap", "--amount", "0.1"])
+    assert plain.stream_interval is None
+    assert plain.stream_quantity is None
+    streamed = build_parser().parse_args(
+        ["swap", "--amount", "0.1", "--stream-interval", "1", "--stream-quantity", "0"]
+    )
+    assert streamed.stream_interval == 1
+    assert streamed.stream_quantity == 0
+
+
+def test_streaming_interval_rejects_negative():
+    with pytest.raises(SystemExit):
+        build_parser().parse_args(
+            ["swap", "--amount", "0.1", "--stream-interval", "-1"]
+        )
+
+
+def test_streaming_kwargs_helper_reads_args():
+    from cryptoswap_wallet.cli import _streaming_kwargs
+
+    args = build_parser().parse_args(
+        ["quote", "--amount", "0.1", "--stream-interval", "3"]
+    )
+    assert _streaming_kwargs(args) == {
+        "streaming_interval": 3,
+        "streaming_quantity": None,
+    }
+
+
 def test_market_comparison_skips_unmapped_asset_without_network():
     from cryptoswap_wallet.cli import _market_comparison
 

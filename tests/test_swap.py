@@ -191,6 +191,70 @@ def test_prepare_surfaces_adapter_problems():
     assert not p.safe
 
 
+def test_prepare_threads_streaming_params_into_quote():
+    captured = {}
+
+    class CapturingThor(FakeThor):
+        def quote_swap(self, *args, **kwargs):
+            captured.update(kwargs)
+            return self._quote
+
+    prepare_swap(
+        thorchain=CapturingThor(),
+        adapter=FakeAdapter(),
+        request=make_request(),
+        now=0,
+        streaming_interval=2,
+        streaming_quantity=0,
+        mnemonic="m",
+    )
+    assert captured.get("streaming_interval") == 2
+    assert captured.get("streaming_quantity") == 0
+
+
+def test_prepare_streaming_drops_tolerance_limit():
+    # Streaming manages slippage itself, so prepare_swap must send tolerance_bps
+    # as None (LIM=0) rather than a tight limit that would defeat streaming.
+    captured = {}
+
+    class CapturingThor(FakeThor):
+        def quote_swap(self, *args, **kwargs):
+            captured.update(kwargs)
+            return self._quote
+
+    prepare_swap(
+        thorchain=CapturingThor(),
+        adapter=FakeAdapter(),
+        request=make_request(),
+        now=0,
+        tolerance_bps=300,
+        streaming_interval=1,
+        mnemonic="m",
+    )
+    assert captured.get("streaming_interval") == 1
+    assert captured.get("tolerance_bps") is None
+
+
+def test_prepare_defaults_streaming_to_none():
+    captured = {}
+
+    class CapturingThor(FakeThor):
+        def quote_swap(self, *args, **kwargs):
+            captured.update(kwargs)
+            return self._quote
+
+    prepare_swap(
+        thorchain=CapturingThor(),
+        adapter=FakeAdapter(),
+        request=make_request(),
+        now=0,
+        mnemonic="m",
+    )
+    # Passed through as None (the client turns None into "omit the param").
+    assert captured.get("streaming_interval") is None
+    assert captured.get("streaming_quantity") is None
+
+
 def test_execute_dry_run_does_not_sign_or_broadcast():
     adapter = FakeAdapter()
     result = execute_swap(prepare(adapter=adapter), adapter, confirm=False)

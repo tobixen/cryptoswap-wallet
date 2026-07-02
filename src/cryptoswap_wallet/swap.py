@@ -42,7 +42,8 @@ def _explain_quote_error(exc: ThorchainError, tolerance_bps: int) -> str:
         return (
             f"THORChain rejected the quote: the swap's fees and slippage exceed "
             f"your {tolerance_bps / 100:.2f}% tolerance. Send a larger amount "
-            f"(fixed outbound fees dominate small swaps) or raise --tolerance-bps. "
+            f"(fixed outbound fees dominate small swaps), spread it over blocks "
+            f"with --stream-interval to cut slippage, or raise --tolerance-bps. "
             f"[{msg}]"
         )
     return f"THORChain rejected the quote: {msg}"
@@ -93,6 +94,8 @@ class ThorchainLike(Protocol):
         amount: int,
         destination: str | None = None,
         *,
+        streaming_interval: int | None = None,
+        streaming_quantity: int | None = None,
         tolerance_bps: int = DEFAULT_TOLERANCE_BPS,
     ) -> Quote: ...
 
@@ -148,24 +151,38 @@ def prepare_swap(
     request: SwapRequest,
     now: int,
     tolerance_bps: int = DEFAULT_TOLERANCE_BPS,
+    streaming_interval: int | None = None,
+    streaming_quantity: int | None = None,
     **build_kwargs: object,
 ) -> Prepared:
     """Run the chain-agnostic checks, then delegate build+verify to the adapter.
 
     Chain-specific inputs (UTXOs/fee_rate/change for BTC; nonce/gas/fees for ETH)
     are passed through ``build_kwargs`` to ``adapter.build_and_verify``.
+
+    ``streaming_interval`` (blocks between sub-swaps) turns this into a streaming
+    swap: the trade is split over blocks to cut slippage. When set, THORChain
+    returns a memo carrying the ``…/interval/quantity`` suffix, which the adapter
+    embeds and the verify gate binds like any other memo. ``streaming_quantity``
+    of ``None``/``0`` lets the network pick the sub-swap count that minimises slip.
     """
     status = thorchain.inbound_addresses().get(adapter.chain)
     if status is None or not status.tradable:
         raise SwapAborted(f"{adapter.chain} is not currently tradable on THORChain")
 
     try:
+        # A tolerance limit and streaming don't mix on THORChain/Maya (a tight
+        # LIM defeats streaming's own slip management, and the node reports the
+        # base emit and refuses), so streaming drops tolerance_bps and lets the
+        # network set LIM=0 and manage slippage over the sub-swaps.
         quote = thorchain.quote_swap(
             request.from_asset,
             request.to_asset,
             request.amount,
             request.destination,
-            tolerance_bps=tolerance_bps,
+            streaming_interval=streaming_interval,
+            streaming_quantity=streaming_quantity,
+            tolerance_bps=None if streaming_interval is not None else tolerance_bps,
         )
     except ThorchainError as exc:
         raise SwapAborted(_explain_quote_error(exc, tolerance_bps)) from exc

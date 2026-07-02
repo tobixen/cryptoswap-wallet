@@ -31,6 +31,12 @@ automatically from git tags (PEP 440 / SemVer).
   binds the token, recipient, amount and memo.
 - Permissive `--dest` sanity check (network/format) to catch gross typos before
   a swap is quoted or broadcast.
+- Streaming swaps: `swap`/`quote --stream-interval N [--stream-quantity M]`
+  splits the trade into sub-swaps over blocks to cut slippage on large or
+  thinly-pooled swaps (threaded through `gather_quotes`/`prepare_swap` into the
+  quote; the API returns a `…/interval/quantity` memo the verify gate binds like
+  any other). Streaming manages slippage itself so it overrides `--tolerance-bps`
+  (memo LIM=0); `quote` prints the sub-swap count and estimated settlement time.
 - Itemised cost breakdown on `quote`/`swap` (slip/swap fee, flat outbound fee,
   quoted total in `bps`; the inbound source-chain tx fee is shown separately),
   plus a best-effort `market:` line comparing the quoted output to a public spot
