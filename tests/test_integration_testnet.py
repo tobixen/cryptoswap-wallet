@@ -34,7 +34,10 @@ import pytest
 pytest.importorskip("bitcoinlib")
 
 from cryptoswap_wallet.chains.btc import ACCOUNT, BtcAdapter  # noqa: E402
-from cryptoswap_wallet.chains.coins import sweep_amount  # noqa: E402
+from cryptoswap_wallet.chains.coins import (  # noqa: E402
+    InsufficientFunds,
+    sweep_amount,
+)
 from cryptoswap_wallet.chains.eth import EthAdapter  # noqa: E402
 from cryptoswap_wallet.chains.scan import scan_account  # noqa: E402
 
@@ -90,7 +93,13 @@ def test_btc_testnet_send_broadcast():
 
         fee_rate = adapter.fetch_fee_rate()
         total = sum(u.value for u in utxos)
-        amount, _ = sweep_amount(total, len(utxos), fee_rate, memo_len=0)
+        try:
+            amount, _ = sweep_amount(total, len(utxos), fee_rate, memo_len=0)
+        except InsufficientFunds as exc:
+            # Skip (not fail): a dust balance that can't cover the (often spiky)
+            # testnet3 fee is an environmental condition like an unfunded account,
+            # not a code regression. Top up the address printed above to run it.
+            pytest.skip(f"testnet account too small to sweep after fee: {exc}")
         prepared = adapter.build_and_verify_send(
             recipient=recipient,
             amount=amount,
